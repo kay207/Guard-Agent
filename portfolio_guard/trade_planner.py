@@ -13,6 +13,7 @@ SYMBOL_ALIASES = {
     "TSLA": ["tsla", "特斯拉", "tesla"],
     "HOOD": ["hood", "robinhood", "罗宾汉"],
     "NVDA": ["nvda", "英伟达", "nvidia"],
+    "SNDK": ["sndk", "闪迪", "sandisk", "san disk"],
     "PDD": ["pdd", "拼多多"],
     "MSFT": ["msft", "微软"],
 }

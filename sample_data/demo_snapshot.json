@@ -137,6 +137,13 @@
       "resistance": "200-204",
       "next_resistance": "212-218"
     },
+    "SNDK": {
+      "state": "SNDK/闪迪 属于高波动半导体存储标的，短线交易需要先看是否站稳关键支撑，再决定是否追随突破。",
+      "support_near": "1853-1942",
+      "support_major": "1720-1780",
+      "resistance": "2029-2117",
+      "next_resistance": "2200-2350"
+    },
     "NVDL": {
       "state": "NVDL 是 NVDA 相关的 2 倍杠杆产品，适合短线表达方向，不适合在高 beta 暴露偏高时长期放大仓位。",
       "support_near": "27.8-28.6",
