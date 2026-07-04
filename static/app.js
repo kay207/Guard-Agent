@@ -108,6 +108,7 @@ function renderModules(modules) {
           <p><strong>证据：</strong>${mod.evidence}</p>
           <p><strong>影响：</strong>${mod.impact}</p>
           <p><strong>变化：</strong>${mod.change}</p>
+          ${mod.advice ? `<p><strong>改善建议：</strong>${mod.advice}</p>` : ""}
         </div>
       `
     )

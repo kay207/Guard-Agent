@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .event_calendar import upcoming_events
+
 
 HIGH_BETA_TAGS = {"high_beta", "leveraged", "speculative_growth", "crypto_linked"}
 INDEX_TAGS = {"index_beta", "index_income"}
@@ -211,6 +213,8 @@ def _beta_module(
     high_beta_pct: float,
     index_pct: float,
     leveraged_pct: float,
+    history: dict[str, Any],
+    week_change: int,
 ) -> dict[str, Any]:
     high_beta_rows = [
         row for row in rows if set(row.get("tags", [])) & HIGH_BETA_TAGS
@@ -240,7 +244,15 @@ def _beta_module(
         if leveraged_pct > 0
         else "当前未识别到明显杠杆产品暴露。"
     )
-    return {
+    if history.get("mode") == "current_snapshot_only":
+        change = "当前是截图导入后的新基线，暂无上一期 beta 暴露可比；后续会跟踪高 beta 占比和指数底仓占比是上升还是下降。"
+    elif week_change >= 2:
+        change = f"过去一周账户风险分数上升 {week_change} 分，高 beta 暴露仍处高位，是风险恶化的主要来源之一。"
+    elif week_change <= -2:
+        change = f"过去一周账户风险分数下降 {abs(week_change)} 分，高 beta 风险有所缓和，但仍需看指数底仓是否足够。"
+    else:
+        change = "过去一周账户风险基本持平，高 beta 与指数底仓结构没有明显改善。"
+    module = {
         "key": "beta",
         "title": "Beta 与主题暴露",
         "status": status,
@@ -249,30 +261,14 @@ def _beta_module(
             f"指数/宽基相关暴露 {index_pct:.1f}%，主要来自 {index_source}。"
         ),
         "impact": f"{beta_read}{index_read}{leveraged_text}",
-        "change": "风险含义：新增交易如果继续买高 beta 或同一主题，应降低单笔仓位；若先补足底仓或提高现金，账户抗波动能力会更强。",
+        "change": change,
     }
-
-
-def _event_items(rows: list[dict[str, Any]]) -> list[str]:
-    symbols = {str(row.get("symbol") or "").upper() for row in rows}
-    tags = set().union(*(set(row.get("tags", [])) for row in rows)) if rows else set()
-    items: list[str] = []
-    if any(symbol in symbols for symbol in {"TSLA", "TSLL"}):
-        items.append("TSLA：交付量、财报、毛利率和自动驾驶/机器人叙事")
-    if symbols & {"NVDA", "NVDL", "TSM", "SNDK", "SOXL"} or "semiconductor" in tags:
-        items.append("半导体/AI 链：财报指引、出口管制、台积电月度营收和资本开支")
-    if symbols & {"HOOD", "SOFI"} or "fintech" in tags:
-        items.append("金融科技：财报、交易量、加密交易活跃度和监管变化")
-    if symbols & {"COIN", "CRCL", "MARA", "MSTR", "RIOT"} or "crypto_linked" in tags:
-        items.append("加密相关：BTC 波动、稳定币监管和风险偏好变化")
-    if symbols & {"PDD", "BABA", "JD", "9988.HK", "0700.HK", "3690.HK"} or "china_internet" in tags:
-        items.append("中概/港股互联网：财报、平台监管、消费数据和政策预期")
-    markets = _market_pct(rows)
-    if markets.get("US", 0) >= 20:
-        items.append("美国宏观：CPI/PCE、非农、FOMC 和美债利率会影响成长股估值")
-    if markets.get("HK", 0) + markets.get("CN", 0) >= 15:
-        items.append("中国/香港宏观：PMI、社融、LPR、政策会议和港股流动性")
-    return items[:5]
+    if status in {"高风险", "偏高"}:
+        module["advice"] = (
+            "先暂停继续增加同主题高 beta 仓位；新增交易降到普通单笔仓位的一半以下。"
+            "把一部分风险预算转向现金或宽基 ETF，或对涨幅较大的主题股做分批止盈/保护。"
+        )
+    return module
 
 
 def _event_module(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -284,17 +280,39 @@ def _event_module(rows: list[dict[str, Any]]) -> dict[str, Any]:
     ]
     sensitive_pct = round(sum(float(row.get("weight_pct") or 0) for row in sensitive_rows), 1)
     core = _join_top(rows, 4)
-    items = _event_items(rows)
-    status = "偏高" if sensitive_pct >= 45 or (rows and rows[0]["weight_pct"] >= 25) else "正常"
-    watch_text = "；".join(items) if items else "当前没有识别到特别集中的事件驱动持仓，仍需按财报和宏观日历复核。"
-    return {
+    events = upcoming_events(rows, days=7)
+    high_events = [event for event in events if event.get("severity") == "high"]
+    status = "偏高" if high_events or sensitive_pct >= 45 or (rows and rows[0]["weight_pct"] >= 25) else "正常"
+    if events:
+        def event_reason(event: dict[str, Any]) -> str:
+            return str(event.get("reason") or "事件可能影响波动").rstrip("。.;；")
+
+        watch_text = "；".join(
+            f"{event['date']} {event['title']}：{event_reason(event)}"
+            for event in events[:5]
+        )
+        evidence = (
+            f"未来 7 天事件日历命中 {len(events)} 项；核心持仓为 {core}；"
+            f"事件敏感型资产约 {sensitive_pct:.1f}%。需要关注：{watch_text}。"
+        )
+        change = f"未来 7 天有 {len(events)} 个相关事件窗口；事件前后不宜把仓位、杠杆或卖期权风险继续放大。"
+    else:
+        evidence = (
+            f"未来 7 天暂未从事件日历发现核心持仓财报或重大宏观事件；"
+            f"核心持仓为 {core}，事件敏感型资产约 {sensitive_pct:.1f}%。"
+        )
+        change = "短期事件压力不高，但仍应在下次刷新时复核财报和宏观日历是否新增。"
+    module = {
         "key": "event",
         "title": "事件风险",
         "status": status,
-        "evidence": f"核心持仓为 {core}；事件敏感型资产约 {sensitive_pct:.1f}%。需要关注：{watch_text}。",
+        "evidence": evidence,
         "impact": "这些事件会改变盈利预期、估值折现率或市场流动性；事件前后继续加仓、卖期权或使用杠杆，容易把普通波动放大成账户级回撤。",
-        "change": "当前版本先输出事件清单，不判断具体日期；真实上线后应接入财报和宏观日历，把未来 7-14 天事件自动标红。",
+        "change": change,
     }
+    if status in {"高风险", "偏高"}:
+        module["advice"] = "事件前减少追涨、卖裸期权和杠杆加仓；对事件敏感的核心仓位先设置保护线，必要时用小比例减仓或保护性期权降低跳空风险。"
+    return module
 
 
 def _fx_module(rows: list[dict[str, Any]], account: dict[str, Any]) -> dict[str, Any]:
@@ -318,7 +336,7 @@ def _fx_module(rows: list[dict[str, Any]], account: dict[str, Any]) -> dict[str,
     else:
         evidence = account.get("fx_evidence", "当前识别到的核心风险资产主要以 USD 计价。")
         impact = "汇率不是当前账户的主要风险来源；后续如果加入港股、A 股或多币种融资，需要重新计算币种敞口。"
-    return {
+    module = {
         "key": "fx",
         "title": "汇率与多币种风险",
         "status": status,
@@ -326,6 +344,9 @@ def _fx_module(rows: list[dict[str, Any]], account: dict[str, Any]) -> dict[str,
         "impact": impact,
         "change": "当前按最新可得公开汇率做静态换算；后续应跟踪非美元敞口占比和汇率变化对账户净值的贡献。",
     }
+    if status in {"高风险", "偏高"}:
+        module["advice"] = "把非美元资产和融资/现金币种对齐；如果港股占比较高，至少在交易计划里同时看 HKD→USD 汇率，避免只看原币收益。"
+    return module
 
 
 def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -369,8 +390,9 @@ def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
             "evidence": f"最大单一持仓 {top1:.1f}%，Top 3 合计 {top3:.1f}%。",
             "impact": "少数股票决定账户大部分波动，容易在单一标的回撤时被动失去交易主动权。",
             "change": "过去一周偏恶化，主要来自高波动持仓权重上升。",
+            "advice": "把最大单一持仓逐步压到 25% 以下，Top 3 降到 60% 以下；上涨后的重仓先考虑分批止盈或保护，而不是继续加仓。",
         },
-        _beta_module(rows, high_beta_pct, index_pct, leveraged_pct),
+        _beta_module(rows, high_beta_pct, index_pct, leveraged_pct, history, week_change),
         {
             "key": "cash",
             "title": "现金与融资安全垫",
@@ -378,6 +400,7 @@ def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
             "evidence": f"现金缓冲 {cash_pct:.1f}%，保证金安全垫 {margin_buffer_pct:.1f}%。",
             "impact": "现金和保证金决定下跌时是否有余地做保护，而不是被迫卖出。",
             "change": "基本持平。",
+            "advice": "先提高现金缓冲或降低融资占用，再考虑新增风险；如果保证金安全垫下降，优先处理杠杆和亏损拖累持仓。",
         },
         {
             "key": "options",
@@ -386,6 +409,7 @@ def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
             "evidence": f"期权时间损耗约 {option_theta_daily_pct:+.2f}%/日，当前没有短期裸卖结构。",
             "impact": "期权风险主要来自时间损耗、隐含波动变化和到期日集中。",
             "change": "基本持平。",
+            "advice": "减少近期限权利金暴露，避免把卖 put 当作补仓；保护策略优先选择定义风险的 put spread、collar 或小比例 protective put。",
         },
         _event_module(rows),
         {
@@ -398,6 +422,9 @@ def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
         },
         _fx_module(rows, account),
     ]
+    for module in modules:
+        if module.get("status") not in {"高风险", "偏高"}:
+            module.pop("advice", None)
 
     return {
         "as_of": snapshot.get("as_of"),
