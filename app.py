@@ -11,6 +11,7 @@ from urllib.parse import unquote
 from portfolio_guard.data_loader import load_demo_snapshot
 from portfolio_guard.risk_scan import build_scan
 from portfolio_guard.trade_planner import plan_trade
+from portfolio_guard.volc_agent import diagnose_llm
 
 
 ROOT = Path(__file__).resolve().parent
@@ -73,6 +74,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/snapshot":
             self._send_json(load_demo_snapshot())
+            return
+        if self.path == "/api/health":
+            snapshot = load_demo_snapshot()
+            self._send_json(
+                {
+                    "ok": True,
+                    "as_of": snapshot.get("as_of"),
+                    "data_mode": snapshot.get("data_mode", {}),
+                    "llm": diagnose_llm(snapshot),
+                }
+            )
             return
         self._send_file(self._resolve_static_path())
 

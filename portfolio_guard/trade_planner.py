@@ -5,7 +5,7 @@ from typing import Any
 
 from .risk_scan import HIGH_BETA_TAGS
 from .market_data import build_market_structure, fetch_yahoo_chart, search_yahoo_symbol
-from .volc_agent import extract_intent_with_llm
+from .volc_agent import parse_intent_with_llm
 
 
 SYMBOL_ALIASES = {
@@ -58,9 +58,8 @@ def _detect_symbol(
     trace: list[dict[str, str]] = []
     if llm_symbol:
         symbol = llm_symbol.upper()
-        trace.append({"tool": "LLM intent parser", "status": "used", "detail": f"模型识别标的 {symbol}"})
+        trace.append({"tool": "Symbol resolver", "status": "matched", "detail": f"采用模型识别标的 {symbol}"})
         return symbol, trace
-    trace.append({"tool": "LLM intent parser", "status": "skipped", "detail": "未配置或未返回有效结果，进入规则/搜索兜底"})
     lower = query.lower()
     for row in rows:
         symbol = str(row.get("symbol") or "").upper()
@@ -92,7 +91,7 @@ def _detect_symbol(
 def _detect_intent(query: str, llm_intent: str | None = None) -> tuple[str, list[dict[str, str]]]:
     trace: list[dict[str, str]] = []
     if llm_intent in {"buy_or_add", "protect_profit", "control_loss"}:
-        trace.append({"tool": "LLM intent parser", "status": "used", "detail": f"模型识别意图 {llm_intent}"})
+        trace.append({"tool": "Intent resolver", "status": "matched", "detail": f"采用模型识别意图 {llm_intent}"})
         return llm_intent, trace
     lower = query.lower()
     if any(word in lower for word in ["保护", "止盈", "卖", "sell", "profit", "涨很多", "涨了一段", "要不要卖"]):
@@ -340,10 +339,10 @@ def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[s
 
 def plan_trade(query: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     rows, _ = _portfolio_rows(snapshot)
-    llm = extract_intent_with_llm(query, snapshot)
+    llm, llm_trace = parse_intent_with_llm(query, snapshot)
     symbol, symbol_trace = _detect_symbol(query, rows, (llm or {}).get("symbol"))
     intent, intent_trace = _detect_intent(query, (llm or {}).get("intent"))
-    trace = [*intent_trace, *symbol_trace]
+    trace = [*llm_trace, *intent_trace, *symbol_trace]
     if not symbol:
         return _unresolved_plan(query, trace)
     position = _find_position(rows, symbol)
