@@ -26,8 +26,8 @@ Professional funds have portfolio risk systems and trading discipline. Retail in
    - Suggests actions such as partial trimming, trailing protection lines, protective puts, put spreads, collars, and covered calls.
 
 3. **Screenshot Portfolio Update**
-   - Lets a user upload a brokerage-position screenshot from the web UI.
-   - Uses the Ark Responses API vision model to extract symbols, quantities, prices, and market values.
+   - Lets a user upload one or more brokerage-position screenshots from the web UI.
+   - Uses the Ark Responses API vision model to merge the screenshots and extract symbols, quantities, prices, and market values.
    - Stores the parsed portfolio in the current browser session, then refreshes the risk scan and trade copilot.
 
 4. **Dynamic Trade Copilot**
@@ -82,7 +82,7 @@ The health check shows whether the Ark environment variables are present and run
 ## Demo Flow
 
 1. Open the dashboard and show the portfolio risk score, risk trend, top positions, and protection alerts.
-2. Click "更新持仓" and upload a brokerage-position screenshot.
+2. Click "更新持仓" and upload one or more brokerage-position screenshots.
 3. Show that the positions, concentration risk, and protection alerts refresh from the screenshot.
 4. Ask: "我想买特斯拉".
 5. Show the response sequence: market risk, account fit, TSLA market structure, scenario plan, recommended and not recommended actions.

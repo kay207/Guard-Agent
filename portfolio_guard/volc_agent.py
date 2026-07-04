@@ -214,7 +214,8 @@ def _parse_llm_payload(payload: dict[str, Any], label: str) -> tuple[dict[str, s
 def _portfolio_image_prompt() -> str:
     return (
         "You are a portfolio screenshot parser for a risk-control trading agent. "
-        "Read the brokerage account screenshot and return strict JSON only. "
+        "Read one or more brokerage account screenshots and return strict JSON only. "
+        "The screenshots may be different pages of the same account; merge them into one deduplicated portfolio. "
         "Extract common stock or ETF holdings. Ignore watchlists, news, orders, and text that is not an actual position. "
         "For each holding return symbol, name, quantity, price, and market_value when visible. "
         "Use US ticker symbols when the screenshot shows company names in Chinese or English. "
@@ -246,6 +247,12 @@ def _json_from_responses_payload(
 def extract_portfolio_from_image(
     image_data_url: str,
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+    return extract_portfolio_from_images([image_data_url])
+
+
+def extract_portfolio_from_images(
+    image_data_urls: list[str],
+) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     api_key = _env("ARK_API_KEY") or _env("VOLCENGINE_API_KEY")
     model = _env("ARK_MODEL")
     if not api_key or not model:
@@ -263,6 +270,9 @@ def extract_portfolio_from_image(
         ]
 
     base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    content = [{"type": "input_text", "text": _portfolio_image_prompt()}]
+    for image_url in image_data_urls:
+        content.append({"type": "input_image", "image_url": image_url})
     payload, transport_trace, _ = _post_json(
         f"{base_url}/responses",
         {
@@ -270,10 +280,7 @@ def extract_portfolio_from_image(
             "input": [
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": _portfolio_image_prompt()},
-                        {"type": "input_image", "image_url": image_data_url},
-                    ],
+                    "content": content,
                 }
             ],
             "thinking": {"type": "disabled"},

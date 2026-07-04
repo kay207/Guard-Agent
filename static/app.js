@@ -217,22 +217,33 @@ function readFileAsDataUrl(file) {
   });
 }
 
-async function uploadPortfolioImage(file) {
-  if (!file) return;
-  if (file.size > 6_500_000) {
-    setUploadStatus("图片过大，请换一张截图", "error");
+async function uploadPortfolioImages(files) {
+  const selected = Array.from(files || []);
+  if (!selected.length) return;
+  if (selected.length > 6) {
+    setUploadStatus("一次最多上传 6 张截图", "error");
+    return;
+  }
+  if (selected.some((file) => file.size > 6_500_000)) {
+    setUploadStatus("单张图片过大，请换截图", "error");
+    return;
+  }
+  const totalSize = selected.reduce((sum, file) => sum + file.size, 0);
+  if (totalSize > 18_000_000) {
+    setUploadStatus("图片总大小过大，请分批上传", "error");
     return;
   }
   const button = $("uploadPortfolioBtn");
   button.disabled = true;
   button.textContent = "识别中";
-  setUploadStatus("正在读取截图持仓", "loading");
+  setUploadStatus(`正在读取 ${selected.length} 张截图`, "loading");
   try {
-    const imageData = await readFileAsDataUrl(file);
+    const images = await Promise.all(selected.map((file) => readFileAsDataUrl(file)));
+    setUploadStatus(`正在识别 ${selected.length} 张截图`, "loading");
     const response = await fetch("/api/portfolio/upload", {
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ image_data: imageData }),
+      body: JSON.stringify({ images }),
     });
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
@@ -240,7 +251,7 @@ async function uploadPortfolioImage(file) {
       throw new Error(detail || "识别失败");
     }
     renderScan(payload.scan);
-    setUploadStatus(`已识别 ${payload.positions.length} 个持仓`, "ok");
+    setUploadStatus(`已从 ${payload.image_count || selected.length} 张图识别 ${payload.positions.length} 个持仓`, "ok");
     await sendPlan($("queryInput").value.trim() || "我想买特斯拉");
   } catch (error) {
     console.error(error);
@@ -272,7 +283,7 @@ function bindEvents() {
     $("portfolioImageInput").click();
   });
   $("portfolioImageInput").addEventListener("change", (event) => {
-    uploadPortfolioImage(event.target.files && event.target.files[0]);
+    uploadPortfolioImages(event.target.files);
   });
 }
 

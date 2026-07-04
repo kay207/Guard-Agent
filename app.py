@@ -13,12 +13,13 @@ from portfolio_guard.data_loader import load_demo_snapshot
 from portfolio_guard.portfolio_upload import build_uploaded_snapshot, normalize_positions
 from portfolio_guard.risk_scan import build_scan
 from portfolio_guard.trade_planner import plan_trade
-from portfolio_guard.volc_agent import diagnose_llm, extract_portfolio_from_image
+from portfolio_guard.volc_agent import diagnose_llm, extract_portfolio_from_images
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
-MAX_JSON_BYTES = 9_000_000
+MAX_JSON_BYTES = 24_000_000
+MAX_UPLOAD_IMAGES = 6
 SESSION_SNAPSHOTS: dict[str, dict] = {}
 
 
@@ -140,11 +141,23 @@ class Handler(BaseHTTPRequestHandler):
             status = 413 if error == "payload too large" else 400
             self._send_json({"error": error}, status=status)
             return
-        image_data = str((payload or {}).get("image_data") or "")
-        if not image_data.startswith("data:image/"):
-            self._send_json({"error": "image_data must be a data:image URL"}, status=400)
+        raw_images = (payload or {}).get("images") or (payload or {}).get("image_data_list")
+        if raw_images is None:
+            raw_images = [(payload or {}).get("image_data")]
+        if not isinstance(raw_images, list):
+            self._send_json({"error": "images must be a list of data:image URLs"}, status=400)
             return
-        extracted, vision_trace = extract_portfolio_from_image(image_data)
+        image_data_urls = [str(item or "") for item in raw_images if item]
+        if not image_data_urls:
+            self._send_json({"error": "no images provided"}, status=400)
+            return
+        if len(image_data_urls) > MAX_UPLOAD_IMAGES:
+            self._send_json({"error": f"最多一次上传 {MAX_UPLOAD_IMAGES} 张截图"}, status=400)
+            return
+        if not all(item.startswith("data:image/") for item in image_data_urls):
+            self._send_json({"error": "all images must be data:image URLs"}, status=400)
+            return
+        extracted, vision_trace = extract_portfolio_from_images(image_data_urls)
         if not extracted:
             self._send_json({"error": "vision parse failed", "trace": vision_trace}, status=422)
             return
@@ -163,6 +176,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(
             {
                 "ok": True,
+                "image_count": len(image_data_urls),
                 "positions": snapshot.get("positions", []),
                 "scan": scan,
                 "trace": [
@@ -170,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "tool": "Portfolio snapshot",
                         "status": "computed",
-                        "detail": f"识别并标准化 {len(snapshot.get('positions', []))} 个持仓",
+                        "detail": f"从 {len(image_data_urls)} 张截图识别并标准化 {len(snapshot.get('positions', []))} 个持仓",
                     },
                 ],
             }
