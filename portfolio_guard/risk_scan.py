@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .event_calendar import upcoming_events
+from .event_calendar import core_stock_watch_items, upcoming_events
 
 
 HIGH_BETA_TAGS = {"high_beta", "leveraged", "speculative_growth", "crypto_linked"}
@@ -41,6 +41,14 @@ EVENT_SENSITIVE_SYMBOLS = {
     "9618.HK",
     "9988.HK",
 }
+THEME_EXPOSURE_TAGS = [
+    ("semiconductor", "半导体/AI 链"),
+    ("fintech", "金融科技/券商"),
+    ("ev", "电动车"),
+    ("china_internet", "中概/港股互联网"),
+    ("crypto_linked", "加密相关"),
+    ("leveraged", "杠杆产品"),
+]
 
 
 def _value(position: dict[str, Any]) -> float:
@@ -97,6 +105,26 @@ def _market_pct(rows: list[dict[str, Any]]) -> dict[str, float]:
 
 def _group_text(grouped: dict[str, float]) -> str:
     return "、".join(f"{label} {value:.1f}%" for label, value in grouped.items()) if grouped else "无"
+
+
+def _theme_exposures(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    exposures: list[dict[str, Any]] = []
+    for tag, label in THEME_EXPOSURE_TAGS:
+        theme_rows = [row for row in rows if tag in set(row.get("tags", []))]
+        weight = round(sum(float(row.get("weight_pct") or 0) for row in theme_rows), 1)
+        if weight > 0:
+            exposures.append({"tag": tag, "label": label, "weight": weight, "rows": theme_rows})
+    return sorted(exposures, key=lambda item: item["weight"], reverse=True)
+
+
+def _theme_text(exposures: list[dict[str, Any]], limit: int = 3) -> str:
+    if not exposures:
+        return "无明显单一主题"
+    parts = []
+    for item in exposures[:limit]:
+        symbols = "、".join(row["symbol"] for row in item["rows"][:2])
+        parts.append(f"{item['label']} {item['weight']:.1f}%（{symbols}）")
+    return "、".join(parts)
 
 
 def _change_label(value: float) -> str:
@@ -222,6 +250,8 @@ def _beta_module(
     index_rows = [
         row for row in rows if set(row.get("tags", [])) & INDEX_TAGS
     ]
+    theme_exposures = _theme_exposures(rows)
+    theme_source = _theme_text(theme_exposures)
     high_beta_source = _join_top(high_beta_rows) if high_beta_rows else "无明显高 beta/主题持仓"
     index_source = _join_top(index_rows) if index_rows else "无指数/宽基底仓"
     status = _status(high_beta_pct + leveraged_pct * 0.5, (35, 55))
@@ -258,15 +288,16 @@ def _beta_module(
         "status": status,
         "evidence": (
             f"高 beta / 投机成长类暴露 {high_beta_pct:.1f}%，主要来自 {high_beta_source}；"
-            f"指数/宽基相关暴露 {index_pct:.1f}%，主要来自 {index_source}。"
+            f"主题集中在{theme_source}；指数/宽基相关暴露 {index_pct:.1f}%，主要来自 {index_source}。"
         ),
         "impact": f"{beta_read}{index_read}{leveraged_text}",
         "change": change,
     }
     if status in {"高风险", "偏高"}:
         module["advice"] = (
-            "先暂停继续增加同主题高 beta 仓位；新增交易降到普通单笔仓位的一半以下。"
-            "把一部分风险预算转向现金或宽基 ETF，或对涨幅较大的主题股做分批止盈/保护。"
+            f"先暂停继续加仓上述同向高 beta 主题（{theme_source}）。"
+            "对冲/平衡方向：医疗保健、必需消费、公用事业、高股息、短债或现金；"
+            "ETF 示例可用 XLV/XLP/XLU 做防守板块，用 VOO/SPY/VTI 补宽基底仓。"
         )
     return module
 
@@ -279,39 +310,45 @@ def _event_module(rows: list[dict[str, Any]]) -> dict[str, Any]:
         or str(row.get("symbol") or "").upper() in EVENT_SENSITIVE_SYMBOLS
     ]
     sensitive_pct = round(sum(float(row.get("weight_pct") or 0) for row in sensitive_rows), 1)
-    core = _join_top(rows, 4)
     events = upcoming_events(rows, days=7)
+    stock_watch = core_stock_watch_items(rows, limit=3)
     high_events = [event for event in events if event.get("severity") == "high"]
     status = "偏高" if high_events or sensitive_pct >= 45 or (rows and rows[0]["weight_pct"] >= 25) else "正常"
     if events:
-        def event_reason(event: dict[str, Any]) -> str:
-            return str(event.get("reason") or "事件可能影响波动").rstrip("。.;；")
-
-        watch_text = "；".join(
-            f"{event['date']} {event['title']}：{event_reason(event)}"
-            for event in events[:5]
+        stock_events = [event for event in events if event.get("symbol")]
+        macro_events = [
+            event
+            for event in events
+            if not event.get("symbol") and event.get("severity") in {"high", "medium"}
+        ]
+        display_events = (stock_events[:2] + macro_events[:3]) or events[:3]
+        calendar_text = "；".join(
+            f"{event['date']} {event['title']}"
+            for event in display_events[:3]
         )
+        stock_text = "；".join(stock_watch) if stock_watch else "暂无额外个股事件"
         evidence = (
-            f"未来 7 天事件日历命中 {len(events)} 项；核心持仓为 {core}；"
-            f"事件敏感型资产约 {sensitive_pct:.1f}%。需要关注：{watch_text}。"
+            f"事件敏感资产 {sensitive_pct:.1f}%。未来 7 天核心事件：{calendar_text}。"
+            f"个股关注：{stock_text}。"
         )
-        change = f"未来 7 天有 {len(events)} 个相关事件窗口；事件前后不宜把仓位、杠杆或卖期权风险继续放大。"
+        change = f"未来 7 天有 {len(events)} 个相关事件窗口；事件前后先降低加仓、杠杆和卖期权动作。"
     else:
+        stock_text = "；".join(stock_watch) if stock_watch else "暂无额外个股事件"
         evidence = (
-            f"未来 7 天暂未从事件日历发现核心持仓财报或重大宏观事件；"
-            f"核心持仓为 {core}，事件敏感型资产约 {sensitive_pct:.1f}%。"
+            f"事件敏感资产 {sensitive_pct:.1f}%。未来 7 天未命中核心宏观/财报日历。"
+            f"个股关注：{stock_text}。"
         )
-        change = "短期事件压力不高，但仍应在下次刷新时复核财报和宏观日历是否新增。"
+        change = "短期日历压力不高；下次刷新继续复核财报和宏观日历。"
     module = {
         "key": "event",
         "title": "事件风险",
         "status": status,
         "evidence": evidence,
-        "impact": "这些事件会改变盈利预期、估值折现率或市场流动性；事件前后继续加仓、卖期权或使用杠杆，容易把普通波动放大成账户级回撤。",
+        "impact": "宏观事件影响利率和风险偏好；个股事件影响盈利预期和跳空风险。",
         "change": change,
     }
     if status in {"高风险", "偏高"}:
-        module["advice"] = "事件前减少追涨、卖裸期权和杠杆加仓；对事件敏感的核心仓位先设置保护线，必要时用小比例减仓或保护性期权降低跳空风险。"
+        module["advice"] = "事件前减少追涨、卖裸期权和杠杆加仓；核心仓位先设保护线，必要时用小比例减仓或保护性期权降低跳空风险。"
     return module
 
 

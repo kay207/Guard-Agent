@@ -17,6 +17,42 @@ except ImportError:  # pragma: no cover
 _CACHE: dict[str, Any] = {"loaded_at": 0.0, "events": {}}
 _CACHE_TTL_SECONDS = 6 * 60 * 60
 
+SYMBOL_FOCUS = {
+    "TSLA": "交付/毛利率/FSD 叙事",
+    "TSLL": "TSLA 交付/毛利率/FSD 叙事",
+    "HOOD": "交易量/加密交易活跃度/监管",
+    "SOFI": "贷款增速/存款成本/监管",
+    "NVDA": "AI 订单/出口管制/财报指引",
+    "NVDL": "NVDA AI 订单/出口管制",
+    "TSM": "月度营收/资本开支/AI 订单",
+    "SNDK": "存储价格/财报指引",
+    "SOXL": "半导体财报指引/出口管制",
+    "PDD": "消费数据/平台监管/汇率",
+    "BABA": "消费数据/平台监管/云业务",
+    "JD": "消费数据/平台监管/利润率",
+    "BIDU": "AI 商业化/广告需求/监管",
+    "0700.HK": "游戏版号/广告需求/监管",
+    "0981.HK": "AI 服务器需求/财报指引",
+    "1024.HK": "自动驾驶进展/交付数据",
+    "3690.HK": "本地生活竞争/消费数据",
+    "9618.HK": "消费数据/平台监管/利润率",
+    "9988.HK": "消费数据/平台监管/云业务",
+    "COIN": "BTC 波动/交易量/监管",
+    "CRCL": "稳定币监管/利率收入/BTC 波动",
+    "MSTR": "BTC 波动/融资计划",
+    "MARA": "BTC 波动/挖矿难度",
+}
+
+TAG_FOCUS = [
+    ("semiconductor", "财报指引/出口管制/AI 订单"),
+    ("fintech", "交易量/利率/监管"),
+    ("crypto_linked", "BTC 波动/稳定币监管"),
+    ("china_internet", "消费数据/平台监管/汇率"),
+    ("ev", "交付数据/毛利率/补贴政策"),
+    ("leveraged", "底层标的波动/隔夜跳空"),
+    ("high_beta", "财报指引/利率预期"),
+]
+
 STATIC_EVENTS = [
     {
         "date": "2026-07-06",
@@ -187,3 +223,28 @@ def upcoming_events(rows: list[dict[str, Any]], days: int = 7) -> list[dict[str,
         unique.values(),
         key=lambda item: (item["date"], severity_rank.get(item.get("severity", "medium"), 1), item["title"]),
     )
+
+
+def core_stock_watch_items(rows: list[dict[str, Any]], limit: int = 3) -> list[str]:
+    items: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        symbol = str(row.get("symbol") or "").upper()
+        if not symbol or symbol in seen:
+            continue
+        weight = float(row.get("weight_pct") or 0)
+        if weight < 5 and len(items) >= 1:
+            continue
+        focus = SYMBOL_FOCUS.get(symbol)
+        tags = set(row.get("tags", []))
+        if not focus:
+            for tag, tag_focus in TAG_FOCUS:
+                if tag in tags:
+                    focus = tag_focus
+                    break
+        if focus:
+            items.append(f"{symbol}：{focus}")
+            seen.add(symbol)
+        if len(items) >= limit:
+            break
+    return items
