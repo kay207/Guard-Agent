@@ -367,6 +367,46 @@ input:focus {
   line-height: 1.35;
 }
 
+.trace-box {
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  border: 1px solid #dce5e1;
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.trace-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  margin-bottom: 8px;
+}
+
+#traceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trace-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid #d9ded9;
+  border-radius: 999px;
+  color: var(--muted);
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.trace-chip strong {
+  color: var(--text);
+  margin-right: 4px;
+}
+
 .target-card {
   margin: 14px 14px 0;
   padding: 12px;

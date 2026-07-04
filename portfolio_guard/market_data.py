@@ -45,6 +45,36 @@ def _fetch_json(url: str, timeout: float = 2.2) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
+def search_yahoo_symbol(query: str) -> dict[str, Any] | None:
+    text = query.strip()
+    if not text:
+        return None
+    url = (
+        "https://query1.finance.yahoo.com/v1/finance/search?"
+        + urllib.parse.urlencode({"q": text, "quotesCount": 8, "newsCount": 0})
+    )
+    try:
+        payload = _fetch_json(url, timeout=2.5)
+    except Exception:
+        return None
+    quotes = payload.get("quotes") or []
+    for item in quotes:
+        symbol = str(item.get("symbol") or "").upper()
+        quote_type = str(item.get("quoteType") or "").upper()
+        if not symbol or quote_type not in {"EQUITY", "ETF", "INDEX"}:
+            continue
+        if "." in symbol or "-" in symbol:
+            continue
+        return {
+            "symbol": symbol,
+            "name": item.get("shortname") or item.get("longname") or symbol,
+            "exchange": item.get("exchDisp") or item.get("exchange"),
+            "quote_type": quote_type,
+            "source": "Yahoo Finance search",
+        }
+    return None
+
+
 def _pct(current: float | None, base: float | None) -> float | None:
     if current is None or base in (None, 0):
         return None

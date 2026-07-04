@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from .risk_scan import HIGH_BETA_TAGS
-from .market_data import build_market_structure, fetch_yahoo_chart
+from .market_data import build_market_structure, fetch_yahoo_chart, search_yahoo_symbol
 from .volc_agent import extract_intent_with_llm
 
 
@@ -50,36 +50,59 @@ TICKER_STOPWORDS = {
 }
 
 
-def _detect_symbol(query: str, rows: list[dict[str, Any]], llm_symbol: str | None = None) -> str:
+def _detect_symbol(
+    query: str,
+    rows: list[dict[str, Any]],
+    llm_symbol: str | None = None,
+) -> tuple[str | None, list[dict[str, str]]]:
+    trace: list[dict[str, str]] = []
     if llm_symbol:
-        return llm_symbol.upper()
+        symbol = llm_symbol.upper()
+        trace.append({"tool": "LLM intent parser", "status": "used", "detail": f"模型识别标的 {symbol}"})
+        return symbol, trace
+    trace.append({"tool": "LLM intent parser", "status": "skipped", "detail": "未配置或未返回有效结果，进入规则/搜索兜底"})
     lower = query.lower()
     for row in rows:
         symbol = str(row.get("symbol") or "").upper()
         name = str(row.get("name") or "").lower()
         if symbol and symbol.lower() in lower:
-            return symbol
+            trace.append({"tool": "Portfolio matcher", "status": "matched", "detail": f"从当前持仓 symbol 匹配 {symbol}"})
+            return symbol, trace
         if name and name in lower:
-            return symbol
+            trace.append({"tool": "Portfolio matcher", "status": "matched", "detail": f"从当前持仓名称匹配 {symbol}"})
+            return symbol, trace
     for symbol, aliases in SYMBOL_ALIASES.items():
         if symbol.lower() in lower or any(alias in lower for alias in aliases):
-            return symbol
+            trace.append({"tool": "Local synonym resolver", "status": "matched", "detail": f"识别为 {symbol}"})
+            return symbol, trace
     for match in re.findall(r"[A-Za-z]{1,6}", query):
         candidate = match.upper()
         if candidate not in TICKER_STOPWORDS:
-            return candidate
-    return "TSLA"
+            trace.append({"tool": "Ticker extractor", "status": "matched", "detail": f"从输入中抽取 ticker {candidate}"})
+            return candidate, trace
+    search = search_yahoo_symbol(query)
+    if search and search.get("symbol"):
+        symbol = str(search["symbol"]).upper()
+        trace.append({"tool": "Yahoo Finance search", "status": "matched", "detail": f"{search.get('name')} -> {symbol}"})
+        return symbol, trace
+    trace.append({"tool": "Symbol resolver", "status": "failed", "detail": "未能识别可交易标的"})
+    return None, trace
 
 
-def _detect_intent(query: str, llm_intent: str | None = None) -> str:
+def _detect_intent(query: str, llm_intent: str | None = None) -> tuple[str, list[dict[str, str]]]:
+    trace: list[dict[str, str]] = []
     if llm_intent in {"buy_or_add", "protect_profit", "control_loss"}:
-        return llm_intent
+        trace.append({"tool": "LLM intent parser", "status": "used", "detail": f"模型识别意图 {llm_intent}"})
+        return llm_intent, trace
     lower = query.lower()
     if any(word in lower for word in ["保护", "止盈", "卖", "sell", "profit", "涨很多", "涨了一段", "要不要卖"]):
-        return "protect_profit"
+        trace.append({"tool": "Rule intent parser", "status": "matched", "detail": "识别为利润保护/卖出评估"})
+        return "protect_profit", trace
     if any(word in lower for word in ["跌", "亏", "补仓", "drawdown", "loss"]):
-        return "control_loss"
-    return "buy_or_add"
+        trace.append({"tool": "Rule intent parser", "status": "matched", "detail": "识别为回撤控制/补仓评估"})
+        return "control_loss", trace
+    trace.append({"tool": "Rule intent parser", "status": "matched", "detail": "识别为买入/加仓评估"})
+    return "buy_or_add", trace
 
 
 def _find_position(rows: list[dict[str, Any]], symbol: str) -> dict[str, Any] | None:
@@ -89,15 +112,58 @@ def _find_position(rows: list[dict[str, Any]], symbol: str) -> dict[str, Any] | 
     return None
 
 
-def _market_structure(snapshot: dict[str, Any], symbol: str) -> dict[str, Any]:
+def _market_structure(snapshot: dict[str, Any], symbol: str) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    trace: list[dict[str, str]] = []
     structures = snapshot.get("market_structure", {})
     existing = structures.get(symbol)
     if existing:
-        return existing
+        trace.append({"tool": "Market Structure", "status": "cached", "detail": f"使用 {symbol} 已有结构数据"})
+        return existing, trace
     chart = fetch_yahoo_chart(symbol)
     if chart:
-        return build_market_structure(symbol, chart) or {}
-    return {}
+        structure = build_market_structure(symbol, chart) or {}
+        trace.append({"tool": "Market data", "status": "live", "detail": f"拉取 {symbol} 公开日线并计算结构区间"})
+        return structure, trace
+    trace.append({"tool": "Market data", "status": "failed", "detail": f"未能取得 {symbol} 行情，输出仅保留账户适配和通用纪律"})
+    return {}, trace
+
+
+def _unresolved_plan(query: str, trace: list[dict[str, str]]) -> dict[str, Any]:
+    return {
+        "as_of": None,
+        "query": query,
+        "symbol": "未识别",
+        "intent": "unknown",
+        "target": {
+            "symbol": "未识别",
+            "quantity": 0,
+            "weight_pct": 0,
+            "price": None,
+            "return_5d": None,
+            "return_20d": None,
+            "support_near": "NA",
+            "support_major": "NA",
+            "resistance": "NA",
+            "next_resistance": "NA",
+            "structure_state": "未识别到可交易标的。",
+            "data_source": "none",
+            "tags": [],
+        },
+        "headline": "我还没有识别出你要分析的标的，请输入股票代码或更完整的公司名。",
+        "sections": [
+            {
+                "title": "如何继续",
+                "bullets": [
+                    "可以输入：我要买 AAPL、SHOP 涨很多了要不要卖、我想保护 NVDA 浮盈。",
+                    "如果是中文简称，模型解析层开启后会更稳；当前规则层也会尝试公开金融搜索。",
+                ],
+            }
+        ],
+        "recommended": ["补充股票代码或公司英文名后重新分析。"],
+        "avoid": ["不要在标的未确认时生成交易计划。"],
+        "trace": trace,
+        "source": "agent pipeline",
+    }
 
 
 def _portfolio_context(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -275,11 +341,16 @@ def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[s
 def plan_trade(query: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     rows, _ = _portfolio_rows(snapshot)
     llm = extract_intent_with_llm(query, snapshot)
-    symbol = _detect_symbol(query, rows, (llm or {}).get("symbol"))
-    intent = _detect_intent(query, (llm or {}).get("intent"))
+    symbol, symbol_trace = _detect_symbol(query, rows, (llm or {}).get("symbol"))
+    intent, intent_trace = _detect_intent(query, (llm or {}).get("intent"))
+    trace = [*intent_trace, *symbol_trace]
+    if not symbol:
+        return _unresolved_plan(query, trace)
     position = _find_position(rows, symbol)
     context = _portfolio_context(rows)
-    structure = _market_structure(snapshot, symbol)
+    structure, structure_trace = _market_structure(snapshot, symbol)
+    trace.extend(structure_trace)
+    trace.append({"tool": "Portfolio risk adapter", "status": "computed", "detail": "结合当前持仓权重和高 beta 暴露调整交易建议"})
 
     if intent == "protect_profit":
         headline, plan_sections, recommended, avoid = _profit_plan(symbol, structure)
@@ -304,5 +375,6 @@ def plan_trade(query: str, snapshot: dict[str, Any]) -> dict[str, Any]:
         "sections": sections,
         "recommended": recommended,
         "avoid": avoid,
+        "trace": trace,
         "source": "demo portfolio + market snapshot + market-structure rules",
     }

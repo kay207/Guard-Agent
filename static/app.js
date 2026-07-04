@@ -115,6 +115,7 @@ function renderScan(scan) {
 function intentLabel(intent) {
   if (intent === "protect_profit") return "利润保护";
   if (intent === "control_loss") return "回撤控制";
+  if (intent === "unknown") return "待确认";
   return "买入评估";
 }
 
@@ -134,12 +135,25 @@ function renderTarget(target) {
   $("targetResistance").textContent = `${target.resistance || "--"} / ${target.next_resistance || "--"}`;
 }
 
+function renderTrace(trace) {
+  const items = trace || [];
+  $("traceList").innerHTML = items.length
+    ? items
+        .map(
+          (item) =>
+            `<span class="trace-chip"><strong>${item.tool}</strong>${item.status}: ${item.detail}</span>`
+        )
+        .join("")
+    : `<span class="trace-chip"><strong>Agent</strong>ready</span>`;
+}
+
 function renderPlan(plan) {
   state.plan = plan;
   $("detectedSymbol").textContent = plan.symbol;
   $("intentLabel").textContent = intentLabel(plan.intent);
   $("planHeadline").textContent = plan.headline;
   renderTarget(plan.target);
+  renderTrace(plan.trace);
   $("planSections").innerHTML = plan.sections
     .map(
       (section) => `
