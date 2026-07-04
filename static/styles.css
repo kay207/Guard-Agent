@@ -51,7 +51,10 @@ h1 {
 
 .topbar-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 .source-pill {
@@ -64,6 +67,49 @@ h1 {
   background: rgba(19, 124, 115, 0.08);
   color: var(--teal);
   font-size: 13px;
+  font-weight: 650;
+}
+
+.topbar-button {
+  height: 30px;
+  padding: 0 12px;
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #fff;
+}
+
+.topbar-button:hover {
+  color: #fff;
+  background: #0f6b64;
+}
+
+.topbar-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.upload-status {
+  max-width: 220px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-status[data-tone="ok"] {
+  color: var(--green);
+  font-weight: 650;
+}
+
+.upload-status[data-tone="error"] {
+  color: var(--red);
+  font-weight: 650;
+}
+
+.upload-status[data-tone="loading"] {
+  color: var(--amber);
   font-weight: 650;
 }
 

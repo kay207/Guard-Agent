@@ -211,6 +211,91 @@ def _parse_llm_payload(payload: dict[str, Any], label: str) -> tuple[dict[str, s
     }
 
 
+def _portfolio_image_prompt() -> str:
+    return (
+        "You are a portfolio screenshot parser for a risk-control trading agent. "
+        "Read the brokerage account screenshot and return strict JSON only. "
+        "Extract common stock or ETF holdings. Ignore watchlists, news, orders, and text that is not an actual position. "
+        "For each holding return symbol, name, quantity, price, and market_value when visible. "
+        "Use US ticker symbols when the screenshot shows company names in Chinese or English. "
+        "If quantity or market value is unclear, return null for that field rather than guessing. "
+        "Return JSON exactly like: "
+        '{"positions":[{"symbol":"NVDA","name":"Nvidia","quantity":20,"price":158.2,"market_value":3164}],'
+        '"cash_pct":null,"margin_buffer_pct":null,"notes":[]}'
+    )
+
+
+def _json_from_responses_payload(
+    payload: dict[str, Any],
+    label: str,
+) -> tuple[dict[str, Any] | None, dict[str, str]]:
+    parsed = _extract_json(_responses_text(payload))
+    if not parsed:
+        return None, {
+            "tool": label,
+            "status": "invalid_response",
+            "detail": "模型返回内容没有可解析的 JSON",
+        }
+    return parsed, {
+        "tool": label,
+        "status": "used",
+        "detail": "图片已转为结构化持仓 JSON",
+    }
+
+
+def extract_portfolio_from_image(
+    image_data_url: str,
+) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+    api_key = _env("ARK_API_KEY") or _env("VOLCENGINE_API_KEY")
+    model = _env("ARK_MODEL")
+    if not api_key or not model:
+        missing = []
+        if not api_key:
+            missing.append("ARK_API_KEY")
+        if not model:
+            missing.append("ARK_MODEL")
+        return None, [
+            {
+                "tool": "Ark Vision Parser",
+                "status": "not_configured",
+                "detail": f"缺少 {', '.join(missing)}，无法识别截图持仓",
+            }
+        ]
+
+    base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    payload, transport_trace, _ = _post_json(
+        f"{base_url}/responses",
+        {
+            "model": model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": _portfolio_image_prompt()},
+                        {"type": "input_image", "image_url": image_data_url},
+                    ],
+                }
+            ],
+            "thinking": {"type": "disabled"},
+        },
+        api_key,
+        _float_env("ARK_TIMEOUT_SECONDS", 30.0),
+        "Ark Vision Parser",
+    )
+    if not payload:
+        return None, [transport_trace]
+    parsed, parse_trace = _json_from_responses_payload(payload, "Ark Vision Parser")
+    if parsed and not isinstance(parsed.get("positions"), list):
+        return None, [
+            {
+                "tool": "Ark Vision Parser",
+                "status": "invalid_response",
+                "detail": "模型返回 JSON 中没有 positions 数组",
+            }
+        ]
+    return parsed, [parse_trace]
+
+
 def parse_intent_with_llm(
     query: str,
     snapshot: dict[str, Any],

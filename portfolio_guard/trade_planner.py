@@ -20,6 +20,8 @@ SYMBOL_ALIASES = {
 
 
 def _position_value(position: dict[str, Any]) -> float:
+    if position.get("market_value") is not None:
+        return float(position.get("market_value") or 0)
     return float(position.get("quantity") or 0) * float(position.get("price") or 0)
 
 

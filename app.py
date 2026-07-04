@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import mimetypes
 import os
@@ -9,13 +10,16 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from portfolio_guard.data_loader import load_demo_snapshot
+from portfolio_guard.portfolio_upload import build_uploaded_snapshot, normalize_positions
 from portfolio_guard.risk_scan import build_scan
 from portfolio_guard.trade_planner import plan_trade
-from portfolio_guard.volc_agent import diagnose_llm
+from portfolio_guard.volc_agent import diagnose_llm, extract_portfolio_from_image
 
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
+MAX_JSON_BYTES = 9_000_000
+SESSION_SNAPSHOTS: dict[str, dict] = {}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -34,6 +38,32 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _read_json(self, max_bytes: int = 200_000) -> tuple[dict | None, str | None]:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > max_bytes:
+            return None, "payload too large"
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except json.JSONDecodeError:
+            return None, "invalid json"
+        if not isinstance(payload, dict):
+            return None, "json must be an object"
+        return payload, None
+
+    def _session_id(self) -> str | None:
+        raw = str(self.headers.get("X-Guard-Session") or "").strip()
+        if not raw:
+            return None
+        safe = "".join(ch for ch in raw[:80] if ch.isalnum() or ch in {"-", "_"})
+        return safe or None
+
+    def _snapshot(self) -> dict:
+        session_id = self._session_id()
+        if session_id and session_id in SESSION_SNAPSHOTS:
+            return copy.deepcopy(SESSION_SNAPSHOTS[session_id])
+        return load_demo_snapshot()
 
     def _send_file(self, path: Path) -> None:
         body, content_type = self._headers_for_file(path)
@@ -68,14 +98,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/api/scan":
-            snapshot = load_demo_snapshot()
+        path = self.path.split("?", 1)[0]
+        if path == "/api/scan":
+            snapshot = self._snapshot()
             self._send_json(build_scan(snapshot))
             return
-        if self.path == "/api/snapshot":
-            self._send_json(load_demo_snapshot())
+        if path == "/api/snapshot":
+            self._send_json(self._snapshot())
             return
-        if self.path == "/api/health":
+        if path == "/api/health":
             snapshot = load_demo_snapshot()
             self._send_json(
                 {
@@ -89,18 +120,61 @@ class Handler(BaseHTTPRequestHandler):
         self._send_file(self._resolve_static_path())
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/api/plan":
-            self.send_error(404)
+        path = self.path.split("?", 1)[0]
+        if path == "/api/plan":
+            payload, error = self._read_json()
+            if error:
+                self._send_json({"error": error}, status=400)
+                return
+            query = str((payload or {}).get("query") or "我想买特斯拉")
+            self._send_json(plan_trade(query, self._snapshot()))
             return
-        length = int(self.headers.get("Content-Length", "0"))
-        raw = self.rfile.read(length) if length else b"{}"
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError:
-            self._send_json({"error": "invalid json"}, status=400)
+        if path == "/api/portfolio/upload":
+            self._handle_portfolio_upload()
             return
-        query = str(payload.get("query") or "我想买特斯拉")
-        self._send_json(plan_trade(query, load_demo_snapshot()))
+        self.send_error(404)
+
+    def _handle_portfolio_upload(self) -> None:
+        payload, error = self._read_json(max_bytes=MAX_JSON_BYTES)
+        if error:
+            status = 413 if error == "payload too large" else 400
+            self._send_json({"error": error}, status=status)
+            return
+        image_data = str((payload or {}).get("image_data") or "")
+        if not image_data.startswith("data:image/"):
+            self._send_json({"error": "image_data must be a data:image URL"}, status=400)
+            return
+        extracted, vision_trace = extract_portfolio_from_image(image_data)
+        if not extracted:
+            self._send_json({"error": "vision parse failed", "trace": vision_trace}, status=422)
+            return
+        positions = normalize_positions(extracted)
+        if not positions:
+            self._send_json(
+                {"error": "no positions detected", "trace": vision_trace, "extracted": extracted},
+                status=422,
+            )
+            return
+        snapshot = build_uploaded_snapshot(load_demo_snapshot(refresh_market=False), extracted)
+        session_id = self._session_id()
+        if session_id:
+            SESSION_SNAPSHOTS[session_id] = copy.deepcopy(snapshot)
+        scan = build_scan(snapshot)
+        self._send_json(
+            {
+                "ok": True,
+                "positions": snapshot.get("positions", []),
+                "scan": scan,
+                "trace": [
+                    *vision_trace,
+                    {
+                        "tool": "Portfolio snapshot",
+                        "status": "computed",
+                        "detail": f"识别并标准化 {len(snapshot.get('positions', []))} 个持仓",
+                    },
+                ],
+            }
+        )
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")

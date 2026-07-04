@@ -1,9 +1,29 @@
 const state = {
   scan: null,
   plan: null,
+  sessionId: getSessionId(),
 };
 
 const $ = (id) => document.getElementById(id);
+
+function getSessionId() {
+  const key = "portfolio_guard_session";
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const next =
+    window.crypto && window.crypto.randomUUID
+      ? window.crypto.randomUUID()
+      : `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  window.localStorage.setItem(key, next);
+  return next;
+}
+
+function apiHeaders(extra = {}) {
+  return {
+    "X-Guard-Session": state.sessionId,
+    ...extra,
+  };
+}
 
 function fmtMoney(value) {
   return new Intl.NumberFormat("en-US", {
@@ -112,6 +132,12 @@ function renderScan(scan) {
   renderModules(scan.modules);
 }
 
+function setUploadStatus(text, tone = "idle") {
+  const node = $("uploadStatus");
+  node.textContent = text;
+  node.dataset.tone = tone;
+}
+
 function intentLabel(intent) {
   if (intent === "protect_profit") return "利润保护";
   if (intent === "control_loss") return "回撤控制";
@@ -169,17 +195,61 @@ function renderPlan(plan) {
 }
 
 async function loadScan() {
-  const response = await fetch("/api/scan");
+  const response = await fetch("/api/scan", { headers: apiHeaders() });
   renderScan(await response.json());
 }
 
 async function sendPlan(query) {
   const response = await fetch("/api/plan", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: apiHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ query }),
   });
   renderPlan(await response.json());
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadPortfolioImage(file) {
+  if (!file) return;
+  if (file.size > 6_500_000) {
+    setUploadStatus("图片过大，请换一张截图", "error");
+    return;
+  }
+  const button = $("uploadPortfolioBtn");
+  button.disabled = true;
+  button.textContent = "识别中";
+  setUploadStatus("正在读取截图持仓", "loading");
+  try {
+    const imageData = await readFileAsDataUrl(file);
+    const response = await fetch("/api/portfolio/upload", {
+      method: "POST",
+      headers: apiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ image_data: imageData }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      const detail = (payload.trace || []).map((item) => item.detail).join("；") || payload.error;
+      throw new Error(detail || "识别失败");
+    }
+    renderScan(payload.scan);
+    setUploadStatus(`已识别 ${payload.positions.length} 个持仓`, "ok");
+    await sendPlan($("queryInput").value.trim() || "我想买特斯拉");
+  } catch (error) {
+    console.error(error);
+    setUploadStatus(`识别失败：${error.message}`, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "更新持仓";
+    $("portfolioImageInput").value = "";
+  }
 }
 
 function bindEvents() {
@@ -197,6 +267,12 @@ function bindEvents() {
       $("queryInput").value = query;
       sendPlan(query);
     });
+  });
+  $("uploadPortfolioBtn").addEventListener("click", () => {
+    $("portfolioImageInput").click();
+  });
+  $("portfolioImageInput").addEventListener("change", (event) => {
+    uploadPortfolioImage(event.target.files && event.target.files[0]);
   });
 }
 

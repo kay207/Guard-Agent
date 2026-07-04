@@ -8,6 +8,8 @@ INDEX_TAGS = {"index_beta", "index_income"}
 
 
 def _value(position: dict[str, Any]) -> float:
+    if position.get("market_value") is not None:
+        return float(position.get("market_value") or 0)
     return float(position.get("quantity") or 0) * float(position.get("price") or 0)
 
 
@@ -150,8 +152,16 @@ def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
     option_theta_daily_pct = float(account.get("option_theta_daily_pct") or 0)
     score = _risk_score(top1, top3, high_beta_pct, leveraged_pct, option_theta_daily_pct, cash_pct)
     history = snapshot.get("risk_history", {})
-    week_change = score - int(history.get("week_ago_score", score))
-    month_change = score - int(history.get("month_ago_score", score))
+    if history.get("mode") == "current_snapshot_only":
+        previous_day_score = score
+        week_ago_score = score
+        month_ago_score = score
+    else:
+        previous_day_score = int(history.get("previous_day_score", score))
+        week_ago_score = int(history.get("week_ago_score", score))
+        month_ago_score = int(history.get("month_ago_score", score))
+    week_change = score - week_ago_score
+    month_change = score - month_ago_score
 
     modules = [
         {
@@ -219,7 +229,7 @@ def build_scan(snapshot: dict[str, Any]) -> dict[str, Any]:
         "risk_score": score,
         "risk_level": _risk_level(score),
         "risk_trend": {
-            "day": _change_label(score - int(history.get("previous_day_score", score))),
+            "day": _change_label(score - previous_day_score),
             "week": _change_label(week_change),
             "month": _change_label(month_change),
             "week_delta": week_change,
