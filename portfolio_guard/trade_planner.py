@@ -339,10 +339,26 @@ def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[s
 
 def plan_trade(query: str, snapshot: dict[str, Any]) -> dict[str, Any]:
     rows, _ = _portfolio_rows(snapshot)
-    llm, llm_trace = parse_intent_with_llm(query, snapshot)
-    symbol, symbol_trace = _detect_symbol(query, rows, (llm or {}).get("symbol"))
-    intent, intent_trace = _detect_intent(query, (llm or {}).get("intent"))
-    trace = [*llm_trace, *intent_trace, *symbol_trace]
+    intent, intent_trace = _detect_intent(query)
+    symbol, symbol_trace = _detect_symbol(query, rows)
+    if symbol:
+        trace = [
+            *intent_trace,
+            *symbol_trace,
+            {
+                "tool": "LLM intent parser",
+                "status": "skipped",
+                "detail": "规则/公开搜索已识别标的，未调用模型以降低延迟",
+            },
+        ]
+    else:
+        llm, llm_trace = parse_intent_with_llm(query, snapshot)
+        if llm:
+            symbol, symbol_trace = _detect_symbol(query, rows, llm.get("symbol"))
+            intent, intent_trace = _detect_intent(query, llm.get("intent"))
+            trace = [*llm_trace, *intent_trace, *symbol_trace]
+        else:
+            trace = [*llm_trace, *intent_trace, *symbol_trace]
     if not symbol:
         return _unresolved_plan(query, trace)
     position = _find_position(rows, symbol)
