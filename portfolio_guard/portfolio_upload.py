@@ -39,6 +39,20 @@ LEVERAGED_SYMBOLS = {
 }
 CRYPTO_LINKED_SYMBOLS = {"COIN", "CRCL", "MARA", "MSTR", "RIOT"}
 MEGA_CAP_SYMBOLS = {"AAPL", "AMZN", "GOOG", "GOOGL", "META", "MSFT"}
+CHINA_INTERNET_SYMBOLS = {
+    "PDD",
+    "BABA",
+    "JD",
+    "BIDU",
+    "NTES",
+    "KWEB",
+    "0700.HK",
+    "0981.HK",
+    "1024.HK",
+    "3690.HK",
+    "9618.HK",
+    "9988.HK",
+}
 CURRENCY_ALIASES = {
     "USD": "USD",
     "US$": "USD",
@@ -148,6 +162,8 @@ def _tags_for_symbol(symbol: str) -> list[str]:
         tags.update({"crypto_linked", "speculative_growth"})
     if symbol in MEGA_CAP_SYMBOLS:
         tags.add("mega_cap_quality")
+    if symbol in CHINA_INTERNET_SYMBOLS:
+        tags.update({"china_internet", "high_beta"})
     if symbol in {"NVDA", "NVDL", "SOXL", "SNDK", "TSM"}:
         tags.add("semiconductor")
     return sorted(tags)
