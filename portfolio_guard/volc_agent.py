@@ -16,6 +16,13 @@ def _env(name: str) -> str:
     return os.environ.get(name, "").strip()
 
 
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(_env(name) or default)
+    except ValueError:
+        return default
+
+
 def llm_config_status() -> dict[str, Any]:
     api_key_source = ""
     if _env("ARK_API_KEY"):
@@ -24,6 +31,7 @@ def llm_config_status() -> dict[str, Any]:
         api_key_source = "VOLCENGINE_API_KEY"
     model = _env("ARK_MODEL")
     base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    timeout_seconds = _float_env("ARK_TIMEOUT_SECONDS", 12.0)
     return {
         "api_key_configured": bool(api_key_source),
         "api_key_source": api_key_source or None,
@@ -31,6 +39,7 @@ def llm_config_status() -> dict[str, Any]:
         "model": model or None,
         "base_url": base_url,
         "chat_completions_url": f"{base_url}/chat/completions",
+        "timeout_seconds": timeout_seconds,
     }
 
 
@@ -140,7 +149,7 @@ def parse_intent_with_llm(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=4.0) as response:
+        with urllib.request.urlopen(request, timeout=_float_env("ARK_TIMEOUT_SECONDS", 12.0)) as response:
             response_text = response.read().decode("utf-8")
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", errors="replace")
