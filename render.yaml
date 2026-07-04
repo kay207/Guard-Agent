@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: portfolio-guard-agent
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: PORTFOLIO_GUARD_LIVE_DATA
+        value: "1"
+

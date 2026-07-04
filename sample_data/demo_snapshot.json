@@ -1,0 +1,162 @@
+{
+  "as_of": "2026-07-04 10:30 Asia/Shanghai",
+  "account": {
+    "cash_pct": 6.5,
+    "margin_buffer_pct": 28.0,
+    "option_theta_daily_pct": -0.18,
+    "fx_status": "正常",
+    "fx_evidence": "主要风险资产以 USD 计价，HKD/CNH 现金敞口在示例组合中不是主要风险。"
+  },
+  "risk_history": {
+    "previous_day_score": 74,
+    "week_ago_score": 66,
+    "month_ago_score": 61
+  },
+  "event_risk": {
+    "status": "正常",
+    "evidence": "未来一周未标记最高优先级财报事件；宏观事件前仍需降低短期卖权和杠杆加仓优先级。"
+  },
+  "market": {
+    "summary": "大盘处在震荡修复阶段，QQQ 强于前一周但还不是顺畅风险偏好。",
+    "risk_note": "VIX 不高，但科技成长股分化明显；追涨和加杠杆需要降级处理。",
+    "qqq_change": "+0.6%",
+    "spy_change": "+0.3%",
+    "vix": "16.1"
+  },
+  "positions": [
+    {
+      "symbol": "HOOD",
+      "name": "Robinhood",
+      "quantity": 580,
+      "price": 107.82,
+      "return_5d": -7.2,
+      "return_20d": 18.5,
+      "tags": ["high_beta", "speculative_growth", "fintech"]
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "quantity": 120,
+      "price": 429.6,
+      "return_5d": 8.4,
+      "return_20d": 15.8,
+      "tags": ["high_beta", "speculative_growth", "ev"]
+    },
+    {
+      "symbol": "QQQI",
+      "name": "QQQ Income ETF",
+      "quantity": 820,
+      "price": 56.5,
+      "return_5d": -1.1,
+      "return_20d": 2.3,
+      "tags": ["index_beta", "index_income"]
+    },
+    {
+      "symbol": "PDD",
+      "name": "PDD Holdings",
+      "quantity": 310,
+      "price": 82.36,
+      "return_5d": -4.0,
+      "return_20d": -2.5,
+      "tags": ["high_beta", "china_internet"]
+    },
+    {
+      "symbol": "TSM",
+      "name": "Taiwan Semiconductor",
+      "quantity": 36,
+      "price": 448.47,
+      "return_5d": 3.8,
+      "return_20d": 9.1,
+      "tags": ["semiconductor", "high_beta"]
+    },
+    {
+      "symbol": "CRCL",
+      "name": "Circle",
+      "quantity": 215,
+      "price": 65.38,
+      "return_5d": -2.6,
+      "return_20d": 6.8,
+      "tags": ["crypto_linked", "speculative_growth"]
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft",
+      "quantity": 25,
+      "price": 384.68,
+      "return_5d": 1.2,
+      "return_20d": 4.4,
+      "tags": ["mega_cap_quality"]
+    },
+    {
+      "symbol": "NVDL",
+      "name": "NVDA 2x ETF",
+      "quantity": 152,
+      "price": 28.99,
+      "return_5d": 6.1,
+      "return_20d": 11.7,
+      "tags": ["leveraged", "high_beta", "semiconductor"]
+    },
+    {
+      "symbol": "NVDA",
+      "name": "Nvidia",
+      "quantity": 20,
+      "price": 158.2,
+      "return_5d": 5.8,
+      "return_20d": 12.4,
+      "tags": ["high_beta", "semiconductor", "ai"]
+    },
+    {
+      "symbol": "VOO",
+      "name": "Vanguard S&P 500 ETF",
+      "quantity": 5,
+      "price": 688.18,
+      "return_5d": 0.8,
+      "return_20d": 2.0,
+      "tags": ["index_beta"]
+    }
+  ],
+  "market_structure": {
+    "TSLA": {
+      "state": "TSLA 短线涨幅较快，正在测试上方压力；趋势可以延续，但追高的风险回报变差。",
+      "support_near": "418-422",
+      "support_major": "397.8-404.8",
+      "resistance": "432-435",
+      "next_resistance": "450-455"
+    },
+    "HOOD": {
+      "state": "HOOD 属于高波动持仓，短线回撤后处在支撑确认阶段。",
+      "support_near": "101-104",
+      "support_major": "94-97",
+      "resistance": "111-114",
+      "next_resistance": "122-126"
+    },
+    "NVDA": {
+      "state": "NVDA 趋势仍偏强，但半导体仓位容易与 QQQ 风险同向叠加。",
+      "support_near": "188-191",
+      "support_major": "180-184",
+      "resistance": "200-204",
+      "next_resistance": "212-218"
+    },
+    "NVDL": {
+      "state": "NVDL 是 NVDA 相关的 2 倍杠杆产品，适合短线表达方向，不适合在高 beta 暴露偏高时长期放大仓位。",
+      "support_near": "27.8-28.6",
+      "support_major": "25.2-26.0",
+      "resistance": "30.2-31.0",
+      "next_resistance": "33.0-34.2"
+    },
+    "PDD": {
+      "state": "PDD 处在弱修复结构，先看能否守住短线支撑。",
+      "support_near": "79-81",
+      "support_major": "73-76",
+      "resistance": "86-88",
+      "next_resistance": "94-97"
+    },
+    "MSFT": {
+      "state": "MSFT 结构较稳，适合作为组合里低波动科技暴露的对照。",
+      "support_near": "374-379",
+      "support_major": "360-366",
+      "resistance": "392-398",
+      "next_resistance": "410-416"
+    }
+  }
+}
