@@ -38,7 +38,9 @@ def llm_config_status() -> dict[str, Any]:
         "model_configured": bool(model),
         "model": model or None,
         "base_url": base_url,
+        "responses_url": f"{base_url}/responses",
         "chat_completions_url": f"{base_url}/chat/completions",
+        "preferred_api": "responses",
         "timeout_seconds": timeout_seconds,
     }
 
@@ -83,6 +85,132 @@ def _error_detail(payload: str) -> str:
     return payload[:220]
 
 
+def _system_prompt() -> str:
+    return (
+        "You are a trading-agent intent parser. Return strict JSON only. "
+        "Choose intent from: buy_or_add, protect_profit, control_loss. "
+        "Use protect_profit for sell, trim, take profit, hedge a winner, or '要不要卖'. "
+        "Use control_loss for drawdown, loss control, average down, or losing positions. "
+        "Extract the most likely US/HK/CN ticker symbol. Prefer symbols in the provided portfolio. "
+        "If the user names a company in Chinese, map it to the listed ticker when widely known, "
+        "for example 苹果 -> AAPL, 英伟达 -> NVDA, 特斯拉 -> TSLA, 闪迪 -> SNDK."
+    )
+
+
+def _user_prompt(query: str, snapshot: dict[str, Any]) -> str:
+    return (
+        f"Portfolio symbols:\n{_portfolio_context(snapshot)}\n\n"
+        f"User query: {query}\n\n"
+        'Return JSON like {"symbol":"NVDA","intent":"protect_profit"}'
+    )
+
+
+def _post_json(
+    url: str,
+    body: dict[str, Any],
+    api_key: str,
+    timeout_seconds: float,
+    label: str,
+) -> tuple[dict[str, Any] | None, dict[str, str], bool]:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            response_text = response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        body_text = error.read().decode("utf-8", errors="replace")
+        return None, {
+            "tool": "LLM intent parser",
+            "status": "error",
+            "detail": f"{label} HTTP {error.code}: {_error_detail(body_text)}",
+        }, False
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
+        return None, {
+            "tool": "LLM intent parser",
+            "status": "error",
+            "detail": f"{label} 请求失败或超时: {error}",
+        }, True
+    except Exception as error:
+        return None, {
+            "tool": "LLM intent parser",
+            "status": "error",
+            "detail": f"{label} 调用异常: {type(error).__name__}: {error}",
+        }, True
+    try:
+        payload = json.loads(response_text)
+    except json.JSONDecodeError:
+        return None, {
+            "tool": "LLM intent parser",
+            "status": "invalid_response",
+            "detail": f"{label} 返回的不是有效 JSON",
+        }, True
+    return payload, {
+        "tool": "LLM intent parser",
+        "status": "transport_ok",
+        "detail": f"{label} 已返回",
+    }, False
+
+
+def _responses_text(payload: dict[str, Any]) -> str:
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text
+    parts: list[str] = []
+    for item in payload.get("output", []):
+        if not isinstance(item, dict):
+            continue
+        content = item.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+    return "\n".join(parts)
+
+
+def _chat_text(payload: dict[str, Any]) -> str:
+    return (
+        ((payload.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or ""
+    )
+
+
+def _parse_llm_payload(payload: dict[str, Any], label: str) -> tuple[dict[str, str] | None, dict[str, str]]:
+    content = _responses_text(payload) if label == "Responses API" else _chat_text(payload)
+    parsed = _extract_json(content)
+    if not parsed:
+        return None, {
+            "tool": "LLM intent parser",
+            "status": "invalid_response",
+            "detail": f"{label} 返回内容没有可解析的 JSON",
+        }
+    symbol = str(parsed.get("symbol") or "").upper().strip()
+    intent = str(parsed.get("intent") or "").strip()
+    if not symbol or intent not in VALID_INTENTS:
+        return None, {
+            "tool": "LLM intent parser",
+            "status": "invalid_response",
+            "detail": f"{label} 返回缺少有效 symbol/intent: {parsed}",
+        }
+    return {"symbol": symbol, "intent": intent}, {
+        "tool": "LLM intent parser",
+        "status": "used",
+        "detail": f"{label} 识别：{symbol} / {intent}",
+    }
+
+
 def parse_intent_with_llm(
     query: str,
     snapshot: dict[str, Any],
@@ -111,22 +239,31 @@ def parse_intent_with_llm(
             }
         ]
     base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
-    url = f"{base_url}/chat/completions"
-    system = (
-        "You are a trading-agent intent parser. Return strict JSON only. "
-        "Choose intent from: buy_or_add, protect_profit, control_loss. "
-        "Use protect_profit for sell, trim, take profit, hedge a winner, or '要不要卖'. "
-        "Use control_loss for drawdown, loss control, average down, or losing positions. "
-        "Extract the most likely US/HK/CN ticker symbol. Prefer symbols in the provided portfolio. "
-        "If the user names a company in Chinese, map it to the listed ticker when widely known, "
-        "for example 苹果 -> AAPL, 英伟达 -> NVDA, 特斯拉 -> TSLA, 闪迪 -> SNDK."
+    timeout_seconds = _float_env("ARK_TIMEOUT_SECONDS", 12.0)
+    system = _system_prompt()
+    user = _user_prompt(query, snapshot)
+    trace: list[dict[str, str]] = []
+
+    responses_payload, responses_trace, terminal = _post_json(
+        f"{base_url}/responses",
+        {
+            "model": model,
+            "input": f"{system}\n\n{user}",
+            "thinking": {"type": "disabled"},
+        },
+        api_key,
+        timeout_seconds,
+        "Responses API",
     )
-    user = (
-        f"Portfolio symbols:\n{_portfolio_context(snapshot)}\n\n"
-        f"User query: {query}\n\n"
-        'Return JSON like {"symbol":"NVDA","intent":"protect_profit"}'
-    )
-    body = json.dumps(
+    if responses_payload:
+        result, parse_trace = _parse_llm_payload(responses_payload, "Responses API")
+        return (result, [parse_trace]) if result else (None, [parse_trace])
+    trace.append(responses_trace)
+    if terminal:
+        return None, trace
+
+    chat_payload, chat_trace, _ = _post_json(
+        f"{base_url}/chat/completions",
         {
             "model": model,
             "messages": [
@@ -136,87 +273,14 @@ def parse_intent_with_llm(
             "temperature": 0,
             "max_tokens": 120,
         },
-        ensure_ascii=False,
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
+        api_key,
+        timeout_seconds,
+        "Chat Completions fallback",
     )
-    try:
-        with urllib.request.urlopen(request, timeout=_float_env("ARK_TIMEOUT_SECONDS", 12.0)) as response:
-            response_text = response.read().decode("utf-8")
-    except urllib.error.HTTPError as error:
-        body = error.read().decode("utf-8", errors="replace")
-        return None, [
-            {
-                "tool": "LLM intent parser",
-                "status": "error",
-                "detail": f"Ark HTTP {error.code}: {_error_detail(body)}",
-            }
-        ]
-    except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
-        return None, [
-            {
-                "tool": "LLM intent parser",
-                "status": "error",
-                "detail": f"Ark 请求失败或超时: {error}",
-            }
-        ]
-    except Exception as error:
-        return None, [
-            {
-                "tool": "LLM intent parser",
-                "status": "error",
-                "detail": f"Ark 调用异常: {type(error).__name__}: {error}",
-            }
-        ]
-    try:
-        payload = json.loads(response_text)
-    except json.JSONDecodeError:
-        return None, [
-            {
-                "tool": "LLM intent parser",
-                "status": "invalid_response",
-                "detail": "Ark 返回的不是有效 JSON",
-            }
-        ]
-    content = (
-        ((payload.get("choices") or [{}])[0].get("message") or {}).get("content")
-        or ""
-    )
-    parsed = _extract_json(content)
-    if not parsed:
-        return None, [
-            {
-                "tool": "LLM intent parser",
-                "status": "invalid_response",
-                "detail": "模型返回内容没有可解析的 JSON",
-            }
-        ]
-    symbol = str(parsed.get("symbol") or "").upper().strip()
-    intent = str(parsed.get("intent") or "").strip()
-    if not symbol or intent not in VALID_INTENTS:
-        return None, [
-            {
-                "tool": "LLM intent parser",
-                "status": "invalid_response",
-                "detail": f"模型返回缺少有效 symbol/intent: {parsed}",
-            }
-        ]
-    result = {"symbol": symbol, "intent": intent}
-    return result, [
-        {
-            "tool": "LLM intent parser",
-            "status": "used",
-            "detail": f"模型识别：{symbol} / {intent}",
-        }
-    ]
+    if chat_payload:
+        result, parse_trace = _parse_llm_payload(chat_payload, "Chat Completions fallback")
+        return (result, [*trace, parse_trace]) if result else (None, [*trace, parse_trace])
+    return None, [*trace, chat_trace]
 
 
 def extract_intent_with_llm(query: str, snapshot: dict[str, Any]) -> dict[str, str] | None:
