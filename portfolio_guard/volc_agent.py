@@ -128,19 +128,19 @@ def _post_json(
     except urllib.error.HTTPError as error:
         body_text = error.read().decode("utf-8", errors="replace")
         return None, {
-            "tool": "LLM intent parser",
+            "tool": label,
             "status": "error",
             "detail": f"{label} HTTP {error.code}: {_error_detail(body_text)}",
         }, False
     except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
         return None, {
-            "tool": "LLM intent parser",
+            "tool": label,
             "status": "error",
             "detail": f"{label} 请求失败或超时: {error}",
         }, True
     except Exception as error:
         return None, {
-            "tool": "LLM intent parser",
+            "tool": label,
             "status": "error",
             "detail": f"{label} 调用异常: {type(error).__name__}: {error}",
         }, True
@@ -148,12 +148,12 @@ def _post_json(
         payload = json.loads(response_text)
     except json.JSONDecodeError:
         return None, {
-            "tool": "LLM intent parser",
+            "tool": label,
             "status": "invalid_response",
             "detail": f"{label} 返回的不是有效 JSON",
         }, True
     return payload, {
-        "tool": "LLM intent parser",
+        "tool": label,
         "status": "transport_ok",
         "detail": f"{label} 已返回",
     }, False
