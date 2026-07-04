@@ -58,11 +58,12 @@ function renderPositions(rows) {
       const width = Math.max(4, (row.weight_pct / maxWeight) * 100);
       const ret = Number(row.return_5d || 0);
       const retClass = ret >= 0 ? "var(--green)" : "var(--red)";
+      const currency = row.currency && row.currency !== "USD" ? ` · ${row.currency}→USD` : "";
       return `
         <div class="position-row">
           <div>
             <div class="symbol">${row.symbol}</div>
-            <div class="position-meta" style="color:${retClass}">${ret >= 0 ? "+" : ""}${ret.toFixed(1)}%</div>
+            <div class="position-meta" style="color:${retClass}">${ret >= 0 ? "+" : ""}${ret.toFixed(1)}%${currency}</div>
           </div>
           <div class="bar"><span style="width:${width}%"></span></div>
           <div class="weight">${row.weight_pct.toFixed(1)}%</div>
@@ -217,6 +218,48 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("图片读取失败"));
+    image.src = src;
+  });
+}
+
+async function compressImageFile(file) {
+  const original = await readFileAsDataUrl(file);
+  const image = await loadImage(original);
+  let maxEdge = 1800;
+  let quality = 0.82;
+  let dataUrl = "";
+  while (maxEdge >= 1400) {
+    dataUrl = drawCompressedImage(image, maxEdge, quality);
+    while (dataUrl.length > 1_800_000 && quality > 0.62) {
+      quality -= 0.08;
+      dataUrl = drawCompressedImage(image, maxEdge, quality);
+    }
+    if (dataUrl.length <= 1_800_000 || maxEdge === 1400) break;
+    maxEdge -= 200;
+    quality = 0.78;
+  }
+  return dataUrl;
+}
+
+function drawCompressedImage(image, maxEdge, quality) {
+  const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 async function uploadPortfolioImages(files) {
   const selected = Array.from(files || []);
   if (!selected.length) return;
@@ -225,20 +268,19 @@ async function uploadPortfolioImages(files) {
     return;
   }
   if (selected.some((file) => file.size > 6_500_000)) {
-    setUploadStatus("单张图片过大，请换截图", "error");
-    return;
+    setUploadStatus("正在压缩大图", "loading");
   }
   const totalSize = selected.reduce((sum, file) => sum + file.size, 0);
-  if (totalSize > 18_000_000) {
+  if (totalSize > 36_000_000) {
     setUploadStatus("图片总大小过大，请分批上传", "error");
     return;
   }
   const button = $("uploadPortfolioBtn");
   button.disabled = true;
   button.textContent = "识别中";
-  setUploadStatus(`正在读取 ${selected.length} 张截图`, "loading");
+  setUploadStatus(`正在压缩 ${selected.length} 张截图`, "loading");
   try {
-    const images = await Promise.all(selected.map((file) => readFileAsDataUrl(file)));
+    const images = await Promise.all(selected.map((file) => compressImageFile(file)));
     setUploadStatus(`正在识别 ${selected.length} 张截图`, "loading");
     const response = await fetch("/api/portfolio/upload", {
       method: "POST",

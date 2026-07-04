@@ -13,6 +13,12 @@ YAHOO_SYMBOLS = {
     "VIX": "^VIX",
     "SPX": "^GSPC",
 }
+FX_FALLBACK_TO_USD = {
+    "USD": 1.0,
+    "HKD": 0.128,
+    "CNY": 0.138,
+    "CNH": 0.138,
+}
 
 
 def _num(value: Any) -> float | None:
@@ -63,7 +69,9 @@ def search_yahoo_symbol(query: str) -> dict[str, Any] | None:
         quote_type = str(item.get("quoteType") or "").upper()
         if not symbol or quote_type not in {"EQUITY", "ETF", "INDEX"}:
             continue
-        if "." in symbol or "-" in symbol:
+        if "." in symbol and not symbol.endswith((".HK", ".SS", ".SZ")):
+            continue
+        if "-" in symbol:
             continue
         return {
             "symbol": symbol,
@@ -73,6 +81,21 @@ def search_yahoo_symbol(query: str) -> dict[str, Any] | None:
             "source": "Yahoo Finance search",
         }
     return None
+
+
+def fetch_fx_rate_to_usd(currency: str) -> float:
+    code = currency.upper().strip()
+    if code == "USD":
+        return 1.0
+    direct_symbol = f"{code}USD=X"
+    chart = fetch_yahoo_chart(direct_symbol, range_="5d")
+    if chart and chart.get("last"):
+        return float(chart["last"])
+    inverse_symbol = f"USD{code}=X"
+    inverse = fetch_yahoo_chart(inverse_symbol, range_="5d")
+    if inverse and inverse.get("last"):
+        return 1.0 / float(inverse["last"])
+    return FX_FALLBACK_TO_USD.get(code, 1.0)
 
 
 def _pct(current: float | None, base: float | None) -> float | None:

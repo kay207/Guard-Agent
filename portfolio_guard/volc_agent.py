@@ -32,6 +32,7 @@ def llm_config_status() -> dict[str, Any]:
     model = _env("ARK_MODEL")
     base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
     timeout_seconds = _float_env("ARK_TIMEOUT_SECONDS", 12.0)
+    vision_timeout_seconds = _float_env("ARK_VISION_TIMEOUT_SECONDS", 60.0)
     return {
         "api_key_configured": bool(api_key_source),
         "api_key_source": api_key_source or None,
@@ -42,6 +43,7 @@ def llm_config_status() -> dict[str, Any]:
         "chat_completions_url": f"{base_url}/chat/completions",
         "preferred_api": "responses",
         "timeout_seconds": timeout_seconds,
+        "vision_timeout_seconds": vision_timeout_seconds,
     }
 
 
@@ -217,11 +219,13 @@ def _portfolio_image_prompt() -> str:
         "Read one or more brokerage account screenshots and return strict JSON only. "
         "The screenshots may be different pages of the same account; merge them into one deduplicated portfolio. "
         "Extract common stock or ETF holdings. Ignore watchlists, news, orders, and text that is not an actual position. "
-        "For each holding return symbol, name, quantity, price, and market_value when visible. "
+        "For each holding return symbol, name, market, currency, quantity, price, and market_value when visible. "
+        "Use USD for US stocks and HKD for Hong Kong stocks. Do not convert currencies yourself. "
         "Use US ticker symbols when the screenshot shows company names in Chinese or English. "
+        "Use Hong Kong ticker symbols with .HK suffix for Hong Kong stocks, for example 0700.HK or 9988.HK. "
         "If quantity or market value is unclear, return null for that field rather than guessing. "
         "Return JSON exactly like: "
-        '{"positions":[{"symbol":"NVDA","name":"Nvidia","quantity":20,"price":158.2,"market_value":3164}],'
+        '{"positions":[{"symbol":"NVDA","name":"Nvidia","market":"US","currency":"USD","quantity":20,"price":158.2,"market_value":3164}],'
         '"cash_pct":null,"margin_buffer_pct":null,"notes":[]}'
     )
 
@@ -242,6 +246,79 @@ def _json_from_responses_payload(
         "status": "used",
         "detail": "图片已转为结构化持仓 JSON",
     }
+
+
+def _merge_portfolio_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    merged_positions: dict[str, dict[str, Any]] = {}
+    notes: list[Any] = []
+    cash_pct: Any = None
+    margin_buffer_pct: Any = None
+    for payload in payloads:
+        if cash_pct is None and payload.get("cash_pct") is not None:
+            cash_pct = payload.get("cash_pct")
+        if margin_buffer_pct is None and payload.get("margin_buffer_pct") is not None:
+            margin_buffer_pct = payload.get("margin_buffer_pct")
+        if isinstance(payload.get("notes"), list):
+            notes.extend(payload.get("notes") or [])
+        for item in payload.get("positions") or []:
+            if not isinstance(item, dict):
+                continue
+            symbol = str(item.get("symbol") or item.get("ticker") or "").upper().strip()
+            key = symbol or str(item.get("name") or item)
+            previous = merged_positions.get(key)
+            if not previous:
+                merged_positions[key] = item
+                continue
+            previous_score = sum(1 for value in previous.values() if value not in (None, ""))
+            current_score = sum(1 for value in item.values() if value not in (None, ""))
+            if current_score > previous_score:
+                merged_positions[key] = item
+    return {
+        "positions": list(merged_positions.values()),
+        "cash_pct": cash_pct,
+        "margin_buffer_pct": margin_buffer_pct,
+        "notes": notes,
+    }
+
+
+def _request_portfolio_images(
+    image_data_urls: list[str],
+    label: str = "Ark Vision Parser",
+) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
+    api_key = _env("ARK_API_KEY") or _env("VOLCENGINE_API_KEY")
+    model = _env("ARK_MODEL")
+    base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+    content = [{"type": "input_text", "text": _portfolio_image_prompt()}]
+    for image_url in image_data_urls:
+        content.append({"type": "input_image", "image_url": image_url})
+    payload, transport_trace, _ = _post_json(
+        f"{base_url}/responses",
+        {
+            "model": model,
+            "input": [
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ],
+            "thinking": {"type": "disabled"},
+        },
+        api_key,
+        _float_env("ARK_VISION_TIMEOUT_SECONDS", 60.0),
+        label,
+    )
+    if not payload:
+        return None, [transport_trace]
+    parsed, parse_trace = _json_from_responses_payload(payload, label)
+    if parsed and not isinstance(parsed.get("positions"), list):
+        return None, [
+            {
+                "tool": label,
+                "status": "invalid_response",
+                "detail": "模型返回 JSON 中没有 positions 数组",
+            }
+        ]
+    return parsed, [parse_trace]
 
 
 def extract_portfolio_from_image(
@@ -269,38 +346,34 @@ def extract_portfolio_from_images(
             }
         ]
 
-    base_url = (_env("ARK_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
-    content = [{"type": "input_text", "text": _portfolio_image_prompt()}]
-    for image_url in image_data_urls:
-        content.append({"type": "input_image", "image_url": image_url})
-    payload, transport_trace, _ = _post_json(
-        f"{base_url}/responses",
+    parsed, trace = _request_portfolio_images(image_data_urls)
+    if parsed or len(image_data_urls) <= 1:
+        return parsed, trace
+
+    fallback_trace = [
+        *trace,
         {
-            "model": model,
-            "input": [
-                {
-                    "role": "user",
-                    "content": content,
-                }
-            ],
-            "thinking": {"type": "disabled"},
+            "tool": "Ark Vision Parser",
+            "status": "retry",
+            "detail": "多图请求未成功，改为单张逐张识别后合并持仓",
         },
-        api_key,
-        _float_env("ARK_TIMEOUT_SECONDS", 30.0),
-        "Ark Vision Parser",
-    )
-    if not payload:
-        return None, [transport_trace]
-    parsed, parse_trace = _json_from_responses_payload(payload, "Ark Vision Parser")
-    if parsed and not isinstance(parsed.get("positions"), list):
-        return None, [
+    ]
+    payloads: list[dict[str, Any]] = []
+    for idx, image_url in enumerate(image_data_urls, start=1):
+        item, item_trace = _request_portfolio_images([image_url], f"Ark Vision Parser image {idx}")
+        fallback_trace.extend(item_trace)
+        if item and item.get("positions"):
+            payloads.append(item)
+    if payloads:
+        return _merge_portfolio_payloads(payloads), [
+            *fallback_trace,
             {
                 "tool": "Ark Vision Parser",
-                "status": "invalid_response",
-                "detail": "模型返回 JSON 中没有 positions 数组",
-            }
+                "status": "merged",
+                "detail": f"逐张识别成功，已合并 {len(payloads)} 张截图的持仓",
+            },
         ]
-    return parsed, [parse_trace]
+    return None, fallback_trace
 
 
 def parse_intent_with_llm(
