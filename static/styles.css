@@ -120,21 +120,38 @@ h1 {
 }
 
 .workspace {
-  display: grid;
-  grid-template-columns: 350px minmax(430px, 1fr) 430px;
-  gap: 16px;
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 18px;
   height: calc(100vh - 76px);
-  min-height: 760px;
+  min-height: 780px;
+  overflow: auto;
 }
 
-.left-pane,
-.center-pane,
-.right-pane {
+.primary-workbench {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.82fr) minmax(560px, 1.45fr);
+  gap: 16px;
+  min-height: 540px;
+}
+
+.agent-stack,
+.plan-focus {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+}
+
+.agent-stack {
+  gap: 12px;
+}
+
+.supporting-context {
+  display: grid;
+  grid-template-columns: 340px 420px minmax(420px, 1fr);
+  gap: 12px;
+  align-items: start;
 }
 
 .panel {
@@ -142,6 +159,15 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
+}
+
+.focus-panel {
+  border-color: rgba(19, 124, 115, 0.26);
+  box-shadow: 0 16px 36px rgba(27, 35, 32, 0.11);
+}
+
+.context-panel {
+  box-shadow: 0 8px 18px rgba(27, 35, 32, 0.05);
 }
 
 .panel-head {
@@ -331,14 +357,36 @@ h1 {
 }
 
 .agent-panel {
-  padding-bottom: 14px;
+  min-height: 228px;
+  padding-bottom: 16px;
+}
+
+.agent-stack .risk-score-panel {
+  flex: 1;
+  min-height: 248px;
+}
+
+.agent-panel .panel-head {
+  min-height: 58px;
+  padding: 15px 16px;
+}
+
+.agent-panel .panel-head span,
+.plan-panel .panel-head span {
+  color: var(--teal);
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.agent-panel .panel-head strong {
+  font-size: 22px;
 }
 
 .prompt-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 14px 14px 10px;
+  padding: 18px 16px 12px;
 }
 
 button {
@@ -358,22 +406,23 @@ button:hover {
 }
 
 .prompt-row button {
-  padding: 0 12px;
+  height: 38px;
+  padding: 0 14px;
 }
 
 .chat-box {
   display: grid;
-  grid-template-columns: 1fr 74px;
-  gap: 8px;
-  padding: 0 14px;
+  grid-template-columns: 1fr 88px;
+  gap: 10px;
+  padding: 0 16px;
 }
 
 input {
-  height: 40px;
+  height: 48px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 0 12px;
-  font-size: 14px;
+  padding: 0 14px;
+  font-size: 16px;
   outline: none;
 }
 
@@ -388,7 +437,7 @@ input:focus {
 }
 
 .module-list {
-  max-height: calc(100vh - 260px);
+  max-height: 330px;
   overflow: auto;
 }
 
@@ -407,15 +456,24 @@ input:focus {
   flex-direction: column;
 }
 
+.plan-panel .panel-head {
+  min-height: 58px;
+  padding: 15px 16px;
+}
+
+.plan-panel .panel-head strong {
+  font-size: 14px;
+}
+
 .plan-panel h2 {
-  margin: 14px 16px 4px;
-  font-size: 20px;
-  line-height: 1.35;
+  margin: 14px 18px 6px;
+  font-size: 22px;
+  line-height: 1.38;
 }
 
 .target-card {
-  margin: 14px 14px 0;
-  padding: 12px;
+  margin: 16px 16px 0;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8faf8;
@@ -475,7 +533,7 @@ input:focus {
 .plan-sections {
   overflow: auto;
   flex: 1;
-  padding-bottom: 4px;
+  padding: 8px 18px 12px;
 }
 
 .plan-section ul,
@@ -492,12 +550,64 @@ input:focus {
   line-height: 1.45;
 }
 
+.plan-section {
+  padding: 14px 0;
+}
+
+.plan-section h3 {
+  font-size: 16px;
+}
+
+.plan-section li {
+  color: #4f5853;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.context-panel .panel-head {
+  min-height: 42px;
+}
+
+.context-panel .panel-head span,
+.context-panel .panel-head strong {
+  font-size: 12px;
+}
+
+.context-panel .headline {
+  font-size: 13px;
+}
+
+.context-panel .score-wrap {
+  grid-template-columns: 78px 1fr;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.context-panel .score-ring {
+  width: 76px;
+  height: 76px;
+}
+
+.context-panel .score-ring span {
+  width: 58px;
+  height: 58px;
+  font-size: 22px;
+}
+
+.risk-structure-panel {
+  grid-column: span 1;
+}
+
 @media (max-width: 1180px) {
   body {
     min-width: 980px;
   }
 
-  .workspace {
-    grid-template-columns: 320px minmax(360px, 1fr) 360px;
+  .primary-workbench {
+    grid-template-columns: minmax(320px, 0.9fr) minmax(520px, 1.35fr);
+  }
+
+  .supporting-context {
+    grid-template-columns: 300px 360px minmax(320px, 1fr);
   }
 }

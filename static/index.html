@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio Guard Agent</title>
+    <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -22,26 +23,73 @@
     </header>
 
     <main class="workspace">
-      <aside class="left-pane">
-        <section class="panel risk-score-panel">
-          <div class="panel-head">
-            <span>账户风险</span>
-            <strong id="riskLevel">--</strong>
-          </div>
-          <div class="score-wrap">
-            <div class="score-ring" id="scoreRing"><span id="riskScore">--</span></div>
-            <div>
-              <p id="headline" class="headline">正在计算组合风险...</p>
-              <div class="trend-grid">
-                <div><span>日</span><strong id="trendDay">--</strong></div>
-                <div><span>周</span><strong id="trendWeek">--</strong></div>
-                <div><span>月</span><strong id="trendMonth">--</strong></div>
+      <section class="primary-workbench">
+        <section class="agent-stack">
+          <section class="panel agent-panel focus-panel">
+            <div class="panel-head">
+              <span>Agent</span>
+              <strong id="detectedSymbol">TSLA</strong>
+            </div>
+            <div class="prompt-row">
+              <button data-query="我想买特斯拉">买 TSLA</button>
+              <button data-query="特斯拉涨很多了，我要不要卖">保护 TSLA 浮盈</button>
+              <button data-query="HOOD 跌很多了，要不要补仓">控制 HOOD 回撤</button>
+            </div>
+            <div class="chat-box">
+              <input id="queryInput" value="我想买特斯拉" />
+              <button id="sendBtn">分析</button>
+            </div>
+          </section>
+
+          <section class="panel risk-score-panel context-panel">
+            <div class="panel-head">
+              <span>账户风险</span>
+              <strong id="riskLevel">--</strong>
+            </div>
+            <div class="score-wrap">
+              <div class="score-ring" id="scoreRing"><span id="riskScore">--</span></div>
+              <div>
+                <p id="headline" class="headline">正在计算组合风险...</p>
+                <div class="trend-grid">
+                  <div><span>日</span><strong id="trendDay">--</strong></div>
+                  <div><span>周</span><strong id="trendWeek">--</strong></div>
+                  <div><span>月</span><strong id="trendMonth">--</strong></div>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
         </section>
 
-        <section class="panel">
+        <aside class="plan-focus">
+          <section class="panel plan-panel focus-panel">
+            <div class="panel-head">
+              <span>行动计划</span>
+              <strong id="intentLabel">--</strong>
+            </div>
+            <div class="target-card">
+              <div>
+                <span>当前分析标的</span>
+                <strong id="targetSymbol">--</strong>
+              </div>
+              <div class="target-grid">
+                <p><span>持仓</span><strong id="targetPosition">--</strong></p>
+                <p><span>价格</span><strong id="targetPrice">--</strong></p>
+                <p><span>5日</span><strong id="targetReturn5d">--</strong></p>
+                <p><span>20日</span><strong id="targetReturn20d">--</strong></p>
+              </div>
+              <div class="target-levels">
+                <p><span>支撑</span><strong id="targetSupport">--</strong></p>
+                <p><span>压力</span><strong id="targetResistance">--</strong></p>
+              </div>
+            </div>
+            <h2 id="planHeadline">正在生成...</h2>
+            <div id="planSections" class="plan-sections"></div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="supporting-context">
+        <section class="panel context-panel">
           <div class="panel-head">
             <span>核心仓位</span>
             <strong id="totalValue">--</strong>
@@ -49,65 +97,20 @@
           <div id="positions" class="position-list"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel context-panel">
           <div class="panel-head">
             <span>风险变化与保护建议</span>
           </div>
           <div id="alerts" class="alert-list"></div>
         </section>
-      </aside>
 
-      <section class="center-pane">
-        <section class="panel agent-panel">
-          <div class="panel-head">
-            <span>Agent</span>
-            <strong id="detectedSymbol">TSLA</strong>
-          </div>
-          <div class="prompt-row">
-            <button data-query="我想买特斯拉">买 TSLA</button>
-            <button data-query="特斯拉涨很多了，我要不要卖">保护 TSLA 浮盈</button>
-            <button data-query="HOOD 跌很多了，要不要补仓">控制 HOOD 回撤</button>
-          </div>
-          <div class="chat-box">
-            <input id="queryInput" value="我想买特斯拉" />
-            <button id="sendBtn">分析</button>
-          </div>
-        </section>
-
-        <section class="panel">
+        <section class="panel context-panel risk-structure-panel">
           <div class="panel-head">
             <span>风险结构</span>
           </div>
           <div id="modules" class="module-list"></div>
         </section>
       </section>
-
-      <aside class="right-pane">
-        <section class="panel plan-panel">
-          <div class="panel-head">
-            <span>行动计划</span>
-            <strong id="intentLabel">--</strong>
-          </div>
-          <div class="target-card">
-            <div>
-              <span>当前分析标的</span>
-              <strong id="targetSymbol">--</strong>
-            </div>
-            <div class="target-grid">
-              <p><span>持仓</span><strong id="targetPosition">--</strong></p>
-              <p><span>价格</span><strong id="targetPrice">--</strong></p>
-              <p><span>5日</span><strong id="targetReturn5d">--</strong></p>
-              <p><span>20日</span><strong id="targetReturn20d">--</strong></p>
-            </div>
-            <div class="target-levels">
-              <p><span>支撑</span><strong id="targetSupport">--</strong></p>
-              <p><span>压力</span><strong id="targetResistance">--</strong></p>
-            </div>
-          </div>
-          <h2 id="planHeadline">正在生成...</h2>
-          <div id="planSections" class="plan-sections"></div>
-        </section>
-      </aside>
     </main>
 
     <script src="/app.js"></script>
