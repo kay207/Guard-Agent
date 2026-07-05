@@ -132,7 +132,7 @@ h1 {
   display: grid;
   grid-template-columns: minmax(360px, 0.82fr) minmax(560px, 1.45fr);
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .agent-stack,
@@ -144,6 +144,7 @@ h1 {
 
 .agent-stack {
   gap: 12px;
+  height: 100%;
 }
 
 .supporting-context {
@@ -337,6 +338,7 @@ h1 {
 }
 
 .agent-stack .risk-score-panel {
+  flex: 1;
   min-height: 0;
 }
 
