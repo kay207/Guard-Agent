@@ -12,6 +12,10 @@ from typing import Any
 YAHOO_SYMBOLS = {
     "VIX": "^VIX",
     "SPX": "^GSPC",
+    "HSI": "^HSI",
+    "HSTECH": "3033.HK",
+    "CSI300": "000300.SS",
+    "SSE": "000001.SS",
 }
 FX_FALLBACK_TO_USD = {
     "USD": 1.0,
@@ -32,6 +36,18 @@ def _num(value: Any) -> float | None:
 
 def _clean_symbol(symbol: str) -> str:
     return symbol.upper().replace(".US", "")
+
+
+def _position_market(position: dict[str, Any]) -> str:
+    symbol = str(position.get("symbol") or "").upper()
+    currency = str(position.get("currency") or "").upper()
+    if position.get("market"):
+        return str(position["market"]).upper()
+    if symbol.endswith(".HK") or currency == "HKD":
+        return "HK"
+    if symbol.endswith((".SS", ".SZ")) or currency in {"CNY", "CNH"}:
+        return "CN"
+    return "US"
 
 
 def _yahoo_symbol(symbol: str) -> str:
@@ -140,6 +156,70 @@ def _fmt_price(value: float | None) -> str:
     return f"{value:.2f}"
 
 
+def _market_tone(primary: dict[str, Any], secondary: dict[str, Any] | None = None) -> str:
+    ret5 = _num(primary.get("return_5d"))
+    ret20 = _num(primary.get("return_20d"))
+    secondary_ret5 = _num((secondary or {}).get("return_5d"))
+    if ret5 is not None and ret5 >= 1.5 and (ret20 or 0) >= 0:
+        tone = "偏强"
+    elif ret5 is not None and ret5 <= -1.5:
+        tone = "偏弱"
+    elif ret20 is not None and ret20 < -2:
+        tone = "修复不足"
+    else:
+        tone = "震荡"
+    if secondary_ret5 is not None and ret5 is not None and ret5 > secondary_ret5 + 0.8:
+        return f"{tone}，成长风格更占优"
+    if secondary_ret5 is not None and ret5 is not None and ret5 < secondary_ret5 - 0.8:
+        return f"{tone}，防守/宽基相对占优"
+    return tone
+
+
+def _risk_appetite(qqq: dict[str, Any], spy: dict[str, Any], vix: dict[str, Any]) -> str:
+    qqq_ret = _num(qqq.get("return_5d"))
+    spy_ret = _num(spy.get("return_5d"))
+    vix_value = _num(vix.get("last"))
+    if vix_value is not None and vix_value >= 22:
+        return "风险偏好偏弱，新增风险和杠杆应降级"
+    if qqq_ret is not None and spy_ret is not None and qqq_ret > spy_ret and (vix_value or 99) < 18:
+        return "风险偏好尚可，但高 beta 仓位不宜继续堆叠"
+    if qqq_ret is not None and qqq_ret < -1:
+        return "风险偏好转弱，先看支撑而不是主动加风险"
+    return "风险偏好中性，适合等确认后分批交易"
+
+
+def _market_views(charts: dict[str, dict[str, Any]], markets: set[str]) -> list[dict[str, str]]:
+    views: list[dict[str, str]] = []
+    if "US" in markets:
+        views.append(
+            {
+                "market": "US",
+                "label": "美股",
+                "summary": f"{_market_tone(charts.get('QQQ') or {}, charts.get('SPY'))}；{_risk_appetite(charts.get('QQQ') or {}, charts.get('SPY') or {}, charts.get('VIX') or {})}。",
+            }
+        )
+    if "HK" in markets:
+        hk_chart = charts.get("HSI") or charts.get("2800.HK") or {}
+        hstech_chart = charts.get("HSTECH") or charts.get("3033.HK") or {}
+        views.append(
+            {
+                "market": "HK",
+                "label": "港股",
+                "summary": f"{_market_tone(hstech_chart or hk_chart, hk_chart)}；若科技指数弱于恒指，港股互联网仓位先控制追涨。",
+            }
+        )
+    if "CN" in markets:
+        cn_chart = charts.get("CSI300") or charts.get("000300.SS") or charts.get("SSE") or {}
+        views.append(
+            {
+                "market": "CN",
+                "label": "A 股",
+                "summary": f"{_market_tone(cn_chart)}；风险偏好主要看宽基能否延续修复，弱势时不宜放大高 beta。",
+            }
+        )
+    return views
+
+
 def _zone(center: float | None, price: float | None, kind: str = "stock") -> str:
     if center is None:
         return "NA"
@@ -240,7 +320,12 @@ def build_market_structure(symbol: str, chart: dict[str, Any]) -> dict[str, Any]
 def refresh_snapshot_with_public_data(snapshot: dict[str, Any]) -> dict[str, Any]:
     positions = snapshot.get("positions", [])
     symbols = sorted({_clean_symbol(str(pos.get("symbol", ""))) for pos in positions if pos.get("symbol")})
+    markets = {_position_market(pos) for pos in positions} or {"US"}
     symbols.extend(["QQQ", "SPY", "VIX"])
+    if "HK" in markets:
+        symbols.extend(["HSI", "HSTECH", "2800.HK"])
+    if "CN" in markets:
+        symbols.extend(["CSI300", "SSE", "510300.SS"])
     charts: dict[str, dict[str, Any]] = {}
     executor = ThreadPoolExecutor(max_workers=8)
     try:
@@ -284,11 +369,12 @@ def refresh_snapshot_with_public_data(snapshot: dict[str, Any]) -> dict[str, Any
     vix = charts.get("VIX") or {}
     market = dict(snapshot.get("market") or {})
     if qqq or spy or vix:
-        market["summary"] = "大盘数据已接入公开行情源，先根据 QQQ/SPY 趋势和 VIX 判断是否适合加风险。"
-        market["risk_note"] = "免费公开行情适合黑客松原型；交易前应接入券商或交易所授权数据。"
+        market["summary"] = f"美股{_market_tone(qqq, spy)}，{_risk_appetite(qqq, spy, vix)}。"
+        market["risk_note"] = "组合交易以大盘强弱和风险偏好定仓位，顺风时分批加，逆风时先保护。"
         market["qqq_change"] = f"{float(qqq.get('return_1d')):+.2f}%" if qqq.get("return_1d") is not None else market.get("qqq_change", "NA")
         market["spy_change"] = f"{float(spy.get('return_1d')):+.2f}%" if spy.get("return_1d") is not None else market.get("spy_change", "NA")
         market["vix"] = f"{float(vix.get('last')):.2f}" if vix.get("last") is not None else market.get("vix", "NA")
+    market["views"] = _market_views(charts, markets)
     snapshot["market"] = market
     snapshot["data_mode"] = {
         "portfolio": "demo/static portfolio input",

@@ -413,46 +413,6 @@ input:focus {
   line-height: 1.35;
 }
 
-.trace-box {
-  margin: 10px 14px 0;
-  padding: 10px 12px;
-  border: 1px solid #dce5e1;
-  border-radius: 8px;
-  background: #fbfcfb;
-}
-
-.trace-title {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 720;
-  margin-bottom: 8px;
-}
-
-#traceList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.trace-chip {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  min-height: 26px;
-  padding: 4px 8px;
-  border: 1px solid #d9ded9;
-  border-radius: 999px;
-  color: var(--muted);
-  background: #fff;
-  font-size: 12px;
-  line-height: 1.25;
-}
-
-.trace-chip strong {
-  color: var(--text);
-  margin-right: 4px;
-}
-
 .target-card {
   margin: 14px 14px 0;
   padding: 12px;
@@ -519,49 +479,17 @@ input:focus {
 }
 
 .plan-section ul,
-.decision-grid ul,
 .alert-item ul {
   margin: 8px 0 0;
   padding-left: 18px;
 }
 
 .plan-section li,
-.decision-grid li,
 .alert-item li {
   margin: 7px 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
-}
-
-.decision-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 12px;
-  border-top: 1px solid var(--line);
-  background: #fbfcfb;
-}
-
-.decision-grid > div {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 10px;
-  min-height: 150px;
-  background: #fff;
-}
-
-.decision-grid h3 {
-  margin: 0;
-  font-size: 14px;
-}
-
-.decision-grid > div:first-child h3 {
-  color: var(--green);
-}
-
-.decision-grid > div:last-child h3 {
-  color: var(--red);
 }
 
 @media (max-width: 1180px) {

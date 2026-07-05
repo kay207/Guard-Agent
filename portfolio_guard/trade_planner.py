@@ -16,6 +16,28 @@ SYMBOL_ALIASES = {
     "SNDK": ["sndk", "闪迪", "sandisk", "san disk"],
     "PDD": ["pdd", "拼多多"],
     "MSFT": ["msft", "微软"],
+    "0700.HK": ["0700.hk", "00700", "腾讯", "tencent"],
+    "9988.HK": ["9988.hk", "09988", "阿里", "阿里巴巴", "alibaba"],
+    "3690.HK": ["3690.hk", "03690", "美团", "meituan"],
+    "510300.SS": ["510300", "沪深300etf", "沪深300 ETF", "csi300 etf"],
+}
+LEVERAGED_TOOL_MAP = {
+    "TSLA": "TSLL",
+    "NVDA": "NVDL",
+    "QQQ": "TQQQ",
+    "SPY": "SPXL",
+    "VOO": "SPXL",
+    "TSM": "SOXL",
+    "SNDK": "SOXL",
+}
+LEVERAGED_PRODUCTS = {"NVDL", "TSLL", "TQQQ", "SOXL", "SPXL", "UPRO"}
+PLACEHOLDER_LEVELS = {
+    "第一支撑区",
+    "关键支撑区",
+    "短线支撑区",
+    "突破观察区",
+    "上方压力区",
+    "下一压力区",
 }
 
 
@@ -39,6 +61,57 @@ def _portfolio_rows(snapshot: dict[str, Any]) -> tuple[list[dict[str, Any]], flo
             }
         )
     return rows, total
+
+
+def _num(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _position_market(row: dict[str, Any]) -> str:
+    symbol = str(row.get("symbol") or "").upper()
+    currency = str(row.get("currency") or "").upper()
+    if row.get("market"):
+        return str(row["market"]).upper()
+    if symbol.endswith(".HK") or currency == "HKD":
+        return "HK"
+    if symbol.endswith((".SS", ".SZ")) or currency in {"CNY", "CNH"}:
+        return "CN"
+    return "US"
+
+
+def _portfolio_markets(rows: list[dict[str, Any]]) -> set[str]:
+    return {_position_market(row) for row in rows} or {"US"}
+
+
+def _leveraged_tool_for(symbol: str) -> tuple[str | None, str]:
+    symbol = symbol.upper()
+    if symbol in LEVERAGED_PRODUCTS:
+        return None, f"{symbol} 本身已经是杠杆工具，不再叠加第二层杠杆。"
+    tool = LEVERAGED_TOOL_MAP.get(symbol)
+    if tool:
+        return tool, f"{tool} 可作为短线杠杆表达，但仓位应小于正股计划的三分之一。"
+    return None, "当前标的没有合适的标准杠杆工具，优先用正股或定义风险的期权结构。"
+
+
+def _ret_bucket(structure: dict[str, Any]) -> str:
+    ret5 = _num(structure.get("return_5d"))
+    if ret5 is not None and ret5 >= 6:
+        return "extended"
+    if ret5 is not None and ret5 <= -5:
+        return "weak"
+    return "neutral"
+
+
+def _level(value: Any, fallback: str) -> str:
+    text = str(value or "").strip()
+    if not text or text in PLACEHOLDER_LEVELS or text == "NA":
+        return fallback
+    return text
 
 
 TICKER_STOPWORDS = {
@@ -198,15 +271,26 @@ def _target_snapshot(position: dict[str, Any] | None, structure: dict[str, Any],
     }
 
 
-def _market_section(snapshot: dict[str, Any]) -> dict[str, Any]:
+def _market_section(snapshot: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
     market = snapshot.get("market", {})
+    portfolio_markets = _portfolio_markets(rows)
+    views = [
+        view
+        for view in market.get("views", [])
+        if view.get("market") in portfolio_markets
+    ]
+    if views:
+        bullets = [f"{view.get('label', view.get('market'))}：{view.get('summary')}" for view in views[:3]]
+    else:
+        label_map = {"US": "美股", "HK": "港股", "CN": "A 股"}
+        bullets = [
+            f"{label_map.get(market_code, market_code)}：大盘处在震荡修复阶段，资金风险偏好尚未顺畅。"
+            for market_code in sorted(portfolio_markets)
+        ]
+        bullets.append("交易含义：新增风险分批做，杠杆只在大盘转强时使用。")
     return {
         "title": "大盘风险",
-        "bullets": [
-            market.get("summary", "当前市场处在震荡修复阶段，适合先控制仓位再寻找确认点。"),
-            market.get("risk_note", "风险偏好并不顺畅，追涨和加杠杆需要降级处理。"),
-            f"QQQ: {market.get('qqq_change', 'NA')}，SPY: {market.get('spy_change', 'NA')}，VIX: {market.get('vix', 'NA')}",
-        ],
+        "bullets": bullets[:3],
     }
 
 
@@ -230,14 +314,22 @@ def _account_section(position: dict[str, Any] | None, context: dict[str, Any], s
 
 
 def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[str], list[str]]:
-    support = structure.get("support_near", "第一支撑区")
-    major = structure.get("support_major", "关键支撑区")
-    resistance = structure.get("resistance", "突破观察区")
-    next_resistance = structure.get("next_resistance", "下一压力区")
-    headline = f"不建议直接追高买入 {symbol}；优先等回踩确认，再用小仓位正股表达看涨。"
+    support = _level(structure.get("support_near"), "支撑区")
+    major = _level(structure.get("support_major"), "关键支撑区")
+    resistance = _level(structure.get("resistance"), "压力区")
+    next_resistance = _level(structure.get("next_resistance"), "下一压力区")
+    tool, tool_note = _leveraged_tool_for(symbol)
+    tool_note = tool_note.rstrip("。")
+    bucket = _ret_bucket(structure)
+    if bucket == "extended":
+        headline = f"{symbol} 短线偏热，买入要拆成回踩和突破两套方案。正股等{support}确认，杠杆只在站稳{resistance}后短线小仓。"
+    elif bucket == "weak":
+        headline = f"{symbol} 还在回撤或弱修复，先看{support}能否守住。正股只适合试探仓，杠杆工具暂缓。"
+    else:
+        headline = f"{symbol} 处在可观察区，正股用分批计划表达方向。突破{resistance}才升级风险，跌破{support}就暂停。"
     sections = [
         {
-            "title": f"{symbol} Market Structure Trading",
+            "title": f"{symbol} 结构与点位",
             "bullets": [
                 structure.get("state", "标的处于震荡或修复结构。"),
                 f"核心支撑：{support}；关键防守区：{major}。",
@@ -247,33 +339,37 @@ def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[st
         {
             "title": "情景计划",
             "bullets": [
-                f"回踩方案：回到 {support} 并企稳，第一笔小仓位买正股。",
-                f"突破方案：放量站稳 {resistance} 后，才考虑更小仓位跟随。",
-                f"防守方案：跌破 {support} 且大盘同步走弱，不新增买入；跌向 {major} 后重新评估。",
+                f"正股回踩：回到{support}并企稳，先买计划仓位的 30%-40%；守住后再加第二笔。",
+                f"正股突破：放量站稳{resistance}后跟随 20%-30%，目标先看{next_resistance}。",
+                f"杠杆工具：{tool_note}；只有突破确认且大盘风险偏好不弱时才使用，跌回{resistance}下方就退出。",
+                f"失败处理：跌破{support}不新增；跌向{major}后重新评估结构。",
             ],
         },
     ]
     recommended = [
-        "回踩企稳后买正股，新增风险控制在组合净值 1%-2%。",
-        "突破跟随只用更小仓位，不把突破当作重仓信号。",
-        "如果账户风险下降，再考虑 call spread，而不是直接买短期期权。",
+        f"正股主计划：{support} 企稳后分批买入。",
+        f"杠杆备选：{tool or '不使用杠杆工具'}，只在突破确认后短线使用。",
     ]
-    avoid = [
-        "不建议现在直接追高。",
-        "不建议买短期期权 Call。",
-        "不建议使用 2 倍或 3 倍杠杆产品表达同一方向。",
-    ]
+    avoid = [f"跌破 {support} 后暂停新增风险。"]
     return headline, sections, recommended, avoid
 
 
 def _profit_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[str], list[str]]:
-    support = structure.get("support_near", "短线支撑区")
-    resistance = structure.get("resistance", "上方压力区")
-    next_resistance = structure.get("next_resistance", "下一压力区")
-    headline = f"不建议只用“卖光或不卖”来处理 {symbol}；更合理的是保留核心仓位，同时保护一部分浮盈。"
+    support = _level(structure.get("support_near"), "支撑区")
+    resistance = _level(structure.get("resistance"), "压力区")
+    next_resistance = _level(structure.get("next_resistance"), "下一压力区")
+    tool, tool_note = _leveraged_tool_for(symbol)
+    tool_note = tool_note.rstrip("。")
+    bucket = _ret_bucket(structure)
+    if bucket == "extended":
+        headline = f"{symbol} 涨幅已经进入需要保护的区域。核心仓可以留，浮盈仓按{resistance}和{support}两条线分批处理。"
+    elif bucket == "weak":
+        headline = f"{symbol} 动能已经转弱，保护优先级高于继续等反弹。跌破{support}就先降风险。"
+    else:
+        headline = f"{symbol} 还没有破坏结构，先用保护线管理利润。上破{resistance}留仓跟随，跌破{support}执行保护。"
     sections = [
         {
-            "title": f"{symbol} Market Structure Trading",
+            "title": f"{symbol} 结构与点位",
             "bullets": [
                 structure.get("state", "标的短线涨幅较大，进入利润保护观察区。"),
                 f"若继续站稳 {resistance}，趋势仍可延续到 {next_resistance}。",
@@ -283,33 +379,37 @@ def _profit_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict
         {
             "title": "利润保护算法",
             "bullets": [
-                f"强势延续：保留核心仓位，保护线跟随上移到 {support} 附近。",
-                f"高位震荡：分批卖出 10%-20% 浮盈仓位，或卖较远虚值 covered call。",
-                "不想卖股：用 protective put 或 collar 保护下行，同时保留主要上行参与。",
-                f"跌破 {support}：优先减仓或买保护，而不是继续加仓摊低。",
+                f"正股强势：站稳{resistance}就保留核心仓位，保护线抬到{support}。",
+                f"正股震荡：在{resistance}附近先卖出 10%-20% 浮盈仓，剩余仓位继续跟踪。",
+                f"正股转弱：跌破{support}先减仓或买保护，不用补仓替代风控。",
+                f"杠杆工具：{tool_note}；如果已持有 {tool or '杠杆仓'}，优先降杠杆，再决定是否保留正股核心仓。",
+                "期权保护：不想卖股时，用 protective put 或 collar 保护下行。",
             ],
         },
     ]
     recommended = [
-        "保留核心仓位，先保护 20%-30% 的浮盈暴露。",
-        "接近压力区时分批止盈，不做一次性全卖。",
-        "愿意保留股票时，优先 protective put 或 collar。",
+        f"{resistance} 附近分批锁定部分利润。",
+        f"跌破 {support} 执行保护，不继续加杠杆。",
     ]
-    avoid = [
-        "不建议因为涨多就全仓清掉。",
-        "不建议在压力区继续加杠杆。",
-        "不建议卖太近的 covered call，以免过早封顶核心仓位。",
-    ]
+    avoid = ["不把保护问题简化成一次性卖光或继续硬扛。"]
     return headline, sections, recommended, avoid
 
 
 def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[str], list[str]]:
-    support = structure.get("support_near", "短线支撑区")
-    major = structure.get("support_major", "关键支撑区")
-    headline = f"先控制 {symbol} 的回撤拖累，不把补仓当作默认动作。"
+    support = _level(structure.get("support_near"), "支撑区")
+    major = _level(structure.get("support_major"), "关键支撑区")
+    tool, tool_note = _leveraged_tool_for(symbol)
+    tool_note = tool_note.rstrip("。")
+    bucket = _ret_bucket(structure)
+    if bucket == "weak":
+        headline = f"{symbol} 处在弱势回撤，先控制亏损暴露。守不住{support}就降仓，杠杆工具不参与。"
+    elif bucket == "extended":
+        headline = f"{symbol} 波动较大，回撤控制要看{support}。能守住才讨论正股修复，杠杆仓先降。"
+    else:
+        headline = f"{symbol} 还在支撑观察区，补仓不是默认动作。先确认{support}，再决定是否恢复小仓位正股。"
     sections = [
         {
-            "title": f"{symbol} Market Structure Trading",
+            "title": f"{symbol} 结构与点位",
             "bullets": [
                 structure.get("state", "标的处于回撤或弱修复结构。"),
                 f"短线支撑：{support}；若有效跌破，下一防守区在 {major}。",
@@ -319,23 +419,19 @@ def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[s
         {
             "title": "回撤控制算法",
             "bullets": [
-                f"守住 {support}：只观察，不急补。",
-                f"跌破 {support}：降低仓位，避免亏损仓位继续扩大。",
-                "仍想持有：用 protective put 或 put spread 限制下行。",
-                "若隐含波动过高，减仓通常比买保护更直接。",
+                f"正股守住：{support}上方只保留观察仓，不急着摊低成本。",
+                f"正股跌破：降仓到能承受的位置，下一观察区看 {major}。",
+                f"正股收复：重新站回{support}并形成更高低点后，才恢复小仓位加回。",
+                f"杠杆工具：{tool_note}；回撤阶段不新开杠杆，已有杠杆仓优先退出。",
+                "保护工具：仍想持有时，用 protective put 或 put spread 限制下行。",
             ],
         },
     ]
     recommended = [
-        "等待收回支撑后再讨论加仓。",
-        "跌破支撑时优先降低拖累。",
-        "需要继续持有时，使用 protective put 或 put spread。",
+        f"守住 {support} 再讨论正股小仓加回。",
+        f"跌破 {support} 先降风险，杠杆工具不参与。",
     ]
-    avoid = [
-        "不建议越跌越补。",
-        "不建议用卖 put 代替止损。",
-        "不建议在大盘走弱时扩大同一风险敞口。",
-    ]
+    avoid = ["不把卖 put 或加杠杆当作止损替代。"]
     return headline, sections, recommended, avoid
 
 
@@ -377,7 +473,7 @@ def plan_trade(query: str, snapshot: dict[str, Any]) -> dict[str, Any]:
         headline, plan_sections, recommended, avoid = _buy_plan(symbol, structure)
 
     sections = [
-        _market_section(snapshot),
+        _market_section(snapshot, rows),
         _account_section(position, context, symbol),
         *plan_sections,
     ]

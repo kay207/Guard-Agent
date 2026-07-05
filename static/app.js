@@ -163,25 +163,12 @@ function renderTarget(target) {
   $("targetResistance").textContent = `${target.resistance || "--"} / ${target.next_resistance || "--"}`;
 }
 
-function renderTrace(trace) {
-  const items = trace || [];
-  $("traceList").innerHTML = items.length
-    ? items
-        .map(
-          (item) =>
-            `<span class="trace-chip"><strong>${item.tool}</strong>${item.status}: ${item.detail}</span>`
-        )
-        .join("")
-    : `<span class="trace-chip"><strong>Agent</strong>ready</span>`;
-}
-
 function renderPlan(plan) {
   state.plan = plan;
   $("detectedSymbol").textContent = plan.symbol;
   $("intentLabel").textContent = intentLabel(plan.intent);
   $("planHeadline").textContent = plan.headline;
   renderTarget(plan.target);
-  renderTrace(plan.trace);
   $("planSections").innerHTML = plan.sections
     .map(
       (section) => `
@@ -192,8 +179,6 @@ function renderPlan(plan) {
       `
     )
     .join("");
-  $("recommended").innerHTML = plan.recommended.map((item) => `<li>${item}</li>`).join("");
-  $("avoid").innerHTML = plan.avoid.map((item) => `<li>${item}</li>`).join("");
 }
 
 async function loadScan() {
