@@ -1,96 +1,138 @@
 # Portfolio Guard Agent
 
-Portfolio Guard Agent is a risk-first trading copilot for active retail investors. It does not try to predict the next winning stock. It helps users turn portfolio exposure, market structure, and trading intent into disciplined action plans.
+Portfolio Guard Agent 是一个面向散户投资者的「风控纪律副驾」。它不试图预测下一只大牛股，而是帮助用户在已有持仓和新的交易想法之间，做出更有纪律的风险管理和交易执行决策。
 
-## Problem
+## 一、项目介绍
 
-Active retail investors often lose control of risk after they already have positions:
+### 1. 面向人群与想解决的问题
 
-- Positions become concentrated in a few high-beta names after large moves.
-- Winners are not protected, so gains are given back.
-- Losers are averaged down without a structure-based invalidation plan.
-- Users know tools such as stock trimming, protective puts, collars, and covered calls, but do not know when each tool fits.
+本产品面向有港股、美股、A 股交易经验的活跃散户，尤其是会持有高波动个股、ETF、杠杆产品或期权的用户。
 
-Professional funds have portfolio risk systems and trading discipline. Retail investors usually get education content, quotes, and news, but not an execution-time risk copilot.
+散户常见的问题不是完全缺少信息，而是缺少账户级风控系统：
 
-## Core Experience
+- 持仓容易集中在少数高 beta 标的或热门主题上，账户波动被单一股票放大。
+- 标的上涨后不知道如何保护浮盈，容易把已经赚到的利润重新还回去。
+- 标的下跌后容易用补仓替代风控，缺少结构化的止损、减仓或保护计划。
+- 做买入、卖出、加仓、保护时，常常只看单个股票，而没有同时考虑大盘风险、账户集中度、事件风险和交易工具选择。
 
-1. **Portfolio Risk Scan**
-   - Measures concentration, high-beta exposure, index beta, cash/margin buffer, option risk, event risk, liquidity, and FX exposure.
-   - Compares risk against daily, weekly, and monthly risk history.
-   - Summarizes every risk structure, not only the worst item.
+专业基金通常有组合风险系统和交易纪律，但散户更多拿到的是行情、新闻和课程。Portfolio Guard Agent 试图把专业风控思路产品化成一个可以对话、可以解释、可以执行的 AI Agent。
 
-2. **Risk Change and Protection Suggestions**
-   - Detects profit-protection cases when a winner rises quickly and becomes a larger risk contributor.
-   - Detects loss-control cases when a falling position starts dragging portfolio risk.
-   - Suggests actions such as partial trimming, trailing protection lines, protective puts, put spreads, collars, and covered calls.
+### 2. 产品简介与核心功能
 
-3. **Screenshot Portfolio Update**
-   - Lets a user upload one or more brokerage-position screenshots from the web UI.
-   - Uses the Ark Responses API vision model to merge the screenshots and extract symbols, quantities, prices, and market values.
-   - Preserves each holding's native market currency and converts US/HK/CN positions into a USD base for portfolio-level risk scoring.
-   - Stores the parsed portfolio in the current browser session, then refreshes the risk scan and trade copilot.
+Portfolio Guard Agent 的核心是两个闭环：账户静态扫描和动态交易风控。
 
-4. **Dynamic Trade Copilot**
-   - Interprets user intent such as "I want to buy TSLA", "TSLA has gone up a lot, should I sell?", or "HOOD dropped a lot, should I average down?"
-   - Evaluates market risk first, then account fit, then ticker market structure.
-   - Produces support/resistance zones, breakout/breakdown scenarios, recommended actions, and actions to avoid.
+**账户静态扫描**
 
-## Technical Design
+- 支持用户上传一张或多张券商持仓截图，自动识别持仓、数量、价格、市值、市场和币种。
+- 输出账户风险评分，并拆解集中度、Beta 与主题暴露、现金与融资安全垫、期权风险、事件风险、流动性风险、汇率与多币种风险。
+- 每个风险模块按「证据、影响、变化、改善建议」组织，尽量让散户用户看懂为什么这是风险，以及可以如何降低风险。
+- 对上涨过快的重仓标的给出浮盈保护建议，对跌幅较大的标的给出回撤控制建议。
 
-- `portfolio_guard/risk_scan.py`: deterministic portfolio risk scan and protection triggers.
-- `portfolio_guard/trade_planner.py`: intent parsing, market-structure scenario planning, and productized recommendations.
-- `portfolio_guard/volc_agent.py`: Volcengine Ark Responses API parser for arbitrary user wording, tickers, and portfolio screenshots.
-- `portfolio_guard/portfolio_upload.py`: normalizes screenshot-recognized holdings into the portfolio snapshot used by the risk engine.
-- `sample_data/demo_snapshot.json`: anonymized demo portfolio and market snapshot.
-- `app.py`: dependency-free Python web server with JSON APIs.
-- `static/`: browser UI for the live demo.
+**动态交易风控**
 
-The current demo is intentionally isolated from the user's live trading bot. This keeps the hackathon submission reproducible and safe. In production, the same interfaces can be connected to broker APIs, screenshot OCR, QVeris, yfinance/Stooq, SEC/HKEX disclosures, Cboe/OCC volatility data, FRED macro data, and a Volcengine LLM agent layer.
+- 用户可以直接用自然语言提问，例如「我想买特斯拉」「我想卖出英伟达」「闪迪涨很多了要不要卖」。
+- Agent 会先判断大盘风险和资金风险偏好，再看账户是否适合继续增加同类风险，最后结合标的的市场结构给出行动计划。
+- 行动计划包含核心支撑/压力位、突破或跌破后的情景计划，以及正股、杠杆产品、保护性期权等不同工具的使用边界。
+- 输出强调可复现的规则逻辑，而不是只给一句模糊的买卖建议。
 
-## Run
+### 3. AI 使用、技术方案、数据源与处理方式
+
+**AI 使用**
+
+- 使用火山引擎 Ark / 豆包大模型能力处理两类非结构化输入：
+  - 自然语言交易意图识别：从用户问题中识别目标标的和意图类型，例如买入、浮盈保护、回撤控制。
+  - 持仓截图识别：从一张或多张券商截图中提取持仓明细，并合并为结构化账户快照。
+- 风险评分、市场结构、保护策略和行动计划主要由确定性的风控算法生成，保证评委可以按相同步骤复现结果。
+
+**技术方案**
+
+- 后端使用 Python 标准库实现轻量 Web 服务，核心接口包括：
+  - `/api/scan`：生成账户风险扫描。
+  - `/api/plan`：根据用户输入生成动态交易行动计划。
+  - `/api/portfolio/upload`：识别并导入持仓截图。
+  - `/api/health`：检查大模型配置和服务状态。
+- 前端使用原生 HTML/CSS/JavaScript 实现仪表盘和 Agent 交互界面。
+- 支持 Docker 和 Render 部署，评委可以直接访问线上 Demo，也可以本地运行项目代码。
+
+**数据源与处理方式**
+
+- 持仓数据：Demo 默认使用匿名样例组合；用户也可以上传真实持仓截图，由大模型识别后写入当前浏览器会话。
+- 行情数据：通过 Yahoo Finance 公开 chart/search 接口获取美股、港股、A 股相关标的、指数、VIX、汇率等数据；不可用时使用内置 fallback，保证 Demo 可运行。
+- 事件数据：结合内置未来一周宏观事件日历和 Yahoo Finance calendarEvents 个股财报窗口，按用户持仓市场和主题标签筛选真正相关的事件。
+- 数据处理：
+  - 根据标的代码、市场和币种识别 US/HK/CN 持仓。
+  - 将港币、人民币等非美元市值按汇率换算成 USD 基准，用于账户级风险扫描。
+  - 计算持仓权重、Top 3 集中度、高 beta 暴露、主题暴露、指数/宽基暴露、现金和保证金安全垫。
+  - 基于价格、均线、ATR、近 5 日/20 日涨跌幅生成支撑区、压力区和情景交易计划。
+
+### 4. 产品运行及访问方式
+
+线上 Demo：
+
+[https://guard-agent-psfd.onrender.com/](https://guard-agent-psfd.onrender.com/)
+
+本地运行：
 
 ```bash
-cd portfolio_guard
+git clone https://github.com/kay207/Guard-Agent.git
+cd Guard-Agent
 python3 app.py --port 8765
 ```
 
-Open:
+打开：
 
 ```text
 http://127.0.0.1:8765
 ```
 
-No API key is required for the deterministic demo mode. To enable the LLM parser, set:
+如需启用火山引擎 Ark 大模型能力，需要配置环境变量：
 
 ```bash
-export ARK_API_KEY="..."
-export ARK_MODEL="..."
+export ARK_API_KEY="your_api_key"
+export ARK_MODEL="doubao-seed-2-1-pro-260628"
 export ARK_BASE_URL="https://ark.cn-beijing.volces.com/api/v3"
 export ARK_TIMEOUT_SECONDS="30"
-export ARK_VISION_TIMEOUT_SECONDS="60"
+export ARK_VISION_TIMEOUT_SECONDS="90"
 ```
 
-The LLM parses user intent, ticker symbols, and uploaded portfolio screenshots. Portfolio risk, market structure, and protection suggestions are still generated by deterministic tools for reproducibility.
+配置后可访问 `/api/health` 查看模型能力是否已成功接入。
 
-To verify whether the deployed LLM parser is actually active, open:
+## 二、产品展示
+
+### 1. Demo 链接
+
+- 线上 Demo：[Portfolio Guard Agent](https://guard-agent-psfd.onrender.com/)
+- 项目代码：[kay207/Guard-Agent](https://github.com/kay207/Guard-Agent)
+
+### 2. 核心功能体验路径
+
+1. 打开线上 Demo，先查看左侧「账户风险」和底部「风险结构」模块。
+2. 点击「更新持仓」，上传一张或多张券商持仓截图，观察系统如何识别持仓、换算币种并刷新账户风险。
+3. 查看底部「风险变化与保护建议」，重点关注上涨后需要保护浮盈的标的，以及下跌后需要控制回撤的标的。
+4. 在中间 Agent 输入框输入一个交易想法，例如：
 
 ```text
-/api/health
+我想买特斯拉
 ```
 
-The health check shows whether the Ark environment variables are present and runs a tiny parser probe without exposing the API key.
+5. 查看右侧「行动计划」：
+   - 当前分析标的是否正确识别。
+   - 大盘风险是否适合加风险。
+   - 当前账户是否适合继续增加同类高波动仓位。
+   - 标的支撑、压力和市场结构是否清晰。
+   - 不同情景下应该如何分批买入、暂停买入、使用杠杆产品或保护工具。
 
-## Demo Flow
+6. 再尝试输入浮盈保护或回撤控制问题，例如：
 
-1. Open the dashboard and show the portfolio risk score, risk trend, top positions, and protection alerts.
-2. Click "更新持仓" and upload one or more brokerage-position screenshots.
-3. Show that the positions, concentration risk, and protection alerts refresh from the screenshot.
-4. Ask: "我想买特斯拉".
-5. Show the response sequence: market risk, account fit, TSLA market structure, scenario plan, recommended and not recommended actions.
-6. Ask: "特斯拉涨很多了，我要不要卖".
-7. Show the profit-protection mode: keep core exposure, protect part of the gain, and choose between trimming, protective put, collar, or covered call.
+```text
+特斯拉涨很多了，我要不要卖
+英伟达跌了很多，要不要补仓
+```
 
-## Disclaimer
+7. 对比 Agent 输出如何从「买入评估」切换到「利润保护」或「回撤控制」，并给出更贴近账户风险的操作建议。
 
-This project is a research and education prototype. It does not place trades, does not provide financial advice, and does not guarantee investment results.
+### 3. Demo 版本说明与未来方向
+
+当前版本是黑客松 Demo，用于展示「散户风控纪律副驾」的核心闭环：持仓识别、账户扫描、风险解释、保护建议和动态交易计划。它不直接下单，也不构成投资建议。
+
+未来正式产品应接入券商账户、授权行情、期权链、交易记录和用户画像，并基于用户的交易偏好、风险承受能力、资金规模、持仓周期、最大可承受回撤等个性化因素，输出更差异化的风险管理策略。
