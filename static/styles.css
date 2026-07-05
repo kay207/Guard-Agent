@@ -122,18 +122,17 @@ h1 {
 .workspace {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px 16px 18px;
-  height: calc(100vh - 76px);
-  min-height: 780px;
-  overflow: auto;
+  gap: 18px;
+  padding: 14px 16px 24px;
+  min-height: calc(100vh - 76px);
+  overflow: visible;
 }
 
 .primary-workbench {
   display: grid;
   grid-template-columns: minmax(360px, 0.82fr) minmax(560px, 1.45fr);
   gap: 16px;
-  min-height: 540px;
+  align-items: start;
 }
 
 .agent-stack,
@@ -338,8 +337,7 @@ h1 {
 }
 
 .agent-stack .risk-score-panel {
-  flex: 1;
-  min-height: 248px;
+  min-height: 0;
 }
 
 .agent-panel .panel-head {
@@ -426,8 +424,7 @@ input:focus {
 }
 
 .plan-panel {
-  flex: 1;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
 }
@@ -507,8 +504,7 @@ input:focus {
 }
 
 .plan-sections {
-  overflow: auto;
-  flex: 1;
+  overflow: visible;
   padding: 8px 18px 12px;
 }
 
@@ -583,25 +579,33 @@ input:focus {
   overflow: auto;
 }
 
-.holdings-panel {
-  grid-column: 1 / -1;
-  overflow: hidden;
+.embedded-holdings {
+  margin: 4px 14px 0;
+  border-top: 1px solid #edf1ee;
 }
 
-.holdings-summary {
+.embedded-holdings summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
   list-style: none;
+  color: var(--muted);
+  font-size: 12px;
 }
 
-.holdings-summary strong {
+.embedded-holdings summary strong {
   margin-left: auto;
+  color: var(--text);
+  font-size: 12px;
 }
 
-.holdings-summary::-webkit-details-marker {
+.embedded-holdings summary::-webkit-details-marker {
   display: none;
 }
 
-.holdings-summary::after {
+.embedded-holdings summary::after {
   content: "展开";
   color: var(--teal);
   font-size: 12px;
@@ -609,15 +613,13 @@ input:focus {
   margin-left: 10px;
 }
 
-.holdings-panel[open] .holdings-summary::after {
+.embedded-holdings[open] summary::after {
   content: "收起";
 }
 
-.holdings-panel .position-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 18px;
-  max-height: 260px;
+.embedded-holdings .position-list {
+  padding: 4px 0 12px;
+  max-height: 220px;
   overflow: auto;
 }
 
