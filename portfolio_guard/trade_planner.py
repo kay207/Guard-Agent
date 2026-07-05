@@ -287,7 +287,7 @@ def _market_section(snapshot: dict[str, Any], rows: list[dict[str, Any]]) -> dic
             f"{label_map.get(market_code, market_code)}：大盘处在震荡修复阶段，资金风险偏好尚未顺畅。"
             for market_code in sorted(portfolio_markets)
         ]
-        bullets.append("交易含义：新增风险分批做，杠杆只在大盘转强时使用。")
+        bullets.append("交易含义：新的买入动作要分批进行，杠杆工具只适合在大盘明显转强时短线使用。")
     return {
         "title": "大盘风险",
         "bullets": bullets[:3],
@@ -307,8 +307,8 @@ def _account_section(position: dict[str, Any] | None, context: dict[str, Any], s
         "title": "账户风险适配",
         "bullets": [
             exposure,
-            f"组合高 beta / 投机成长暴露约 {context['high_beta_pct']:.1f}%，最大仓位集中在 {top_text}。",
-            "交易含义：如果新动作继续增加同方向高 beta，仓位应低于普通单笔交易规模。",
+            f"组合里高波动、成长类资产占比约 {context['high_beta_pct']:.1f}%，最大仓位集中在 {top_text}。",
+            "交易含义：如果这次操作还是买入同一类高波动资产，单笔仓位需要比平时更小。",
         ],
     }
 
@@ -322,11 +322,11 @@ def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[st
     tool_note = tool_note.rstrip("。")
     bucket = _ret_bucket(structure)
     if bucket == "extended":
-        headline = f"{symbol} 短线偏热，买入要拆成回踩和突破两套方案。正股等{support}确认，杠杆只在站稳{resistance}后短线小仓。"
+        headline = f"{symbol} 短线已经有点偏热，不适合一次性买满。更稳妥的做法是等价格回到{support}附近站稳后分批买；只有突破{resistance}并站住，才考虑很小仓位的杠杆工具。"
     elif bucket == "weak":
-        headline = f"{symbol} 还在回撤或弱修复，先看{support}能否守住。正股只适合试探仓，杠杆工具暂缓。"
+        headline = f"{symbol} 还在回撤或弱修复阶段，先看价格能不能守住{support}。如果要买，只适合用很小的正股试探仓，暂时不要用杠杆工具。"
     else:
-        headline = f"{symbol} 处在可观察区，正股用分批计划表达方向。突破{resistance}才升级风险，跌破{support}就暂停。"
+        headline = f"{symbol} 现在更适合用分批计划来表达看涨，而不是一次性买入。突破{resistance}并站稳后才提高仓位；如果跌破{support}，先暂停买入。"
     sections = [
         {
             "title": f"{symbol} 结构与点位",
@@ -339,10 +339,10 @@ def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[st
         {
             "title": "情景计划",
             "bullets": [
-                f"正股回踩：回到{support}并企稳，先买计划仓位的 30%-40%；守住后再加第二笔。",
-                f"正股突破：放量站稳{resistance}后跟随 20%-30%，目标先看{next_resistance}。",
-                f"杠杆工具：{tool_note}；只有突破确认且大盘风险偏好不弱时才使用，跌回{resistance}下方就退出。",
-                f"失败处理：跌破{support}不新增；跌向{major}后重新评估结构。",
+                f"如果价格先回落：等它回到{support}附近并重新走稳，再买入计划仓位的 30%-40%；如果后面还能守住这个区域，再加第二笔。",
+                f"如果价格直接向上突破：只有放量站稳{resistance}后，才跟随买入 20%-30% 的计划仓位，第一目标先看{next_resistance}。",
+                f"如果想用杠杆工具：{tool_note}；只有在突破确认、且大盘风险偏好不弱时才短线使用。一旦价格跌回{resistance}下方，就先退出杠杆仓位。",
+                f"如果计划失败：跌破{support}后，先不要再买入这个标的，也不要用杠杆加仓；如果继续跌向{major}，等价格重新站稳后再评估。",
             ],
         },
     ]
@@ -362,11 +362,11 @@ def _profit_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict
     tool_note = tool_note.rstrip("。")
     bucket = _ret_bucket(structure)
     if bucket == "extended":
-        headline = f"{symbol} 涨幅已经进入需要保护的区域。核心仓可以留，浮盈仓按{resistance}和{support}两条线分批处理。"
+        headline = f"{symbol} 已经涨到需要保护利润的阶段。核心仓位可以继续留一部分，但浮盈仓要按{resistance}和{support}两条线分批处理。"
     elif bucket == "weak":
-        headline = f"{symbol} 动能已经转弱，保护优先级高于继续等反弹。跌破{support}就先降风险。"
+        headline = f"{symbol} 的短线动能已经转弱，现在保护已有利润比继续等反弹更重要。如果跌破{support}，先卖出一部分或买保护。"
     else:
-        headline = f"{symbol} 还没有破坏结构，先用保护线管理利润。上破{resistance}留仓跟随，跌破{support}执行保护。"
+        headline = f"{symbol} 目前还没有明显破坏结构，可以先用{support}作为利润保护线。向上突破{resistance}就继续持有，跌破{support}就执行保护。"
     sections = [
         {
             "title": f"{symbol} 结构与点位",
@@ -379,17 +379,17 @@ def _profit_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict
         {
             "title": "利润保护算法",
             "bullets": [
-                f"正股强势：站稳{resistance}就保留核心仓位，保护线抬到{support}。",
-                f"正股震荡：在{resistance}附近先卖出 10%-20% 浮盈仓，剩余仓位继续跟踪。",
-                f"正股转弱：跌破{support}先减仓或买保护，不用补仓替代风控。",
-                f"杠杆工具：{tool_note}；如果已持有 {tool or '杠杆仓'}，优先降杠杆，再决定是否保留正股核心仓。",
-                "期权保护：不想卖股时，用 protective put 或 collar 保护下行。",
+                f"如果继续强势：只要价格站稳{resistance}，可以保留核心仓位；同时把{support}设为保护参考线，跌破就处理。",
+                f"如果高位震荡：在{resistance}附近先卖出 10%-20% 的浮盈仓位，剩下的仓位继续跟踪趋势。",
+                f"如果开始转弱：一旦跌破{support}，先卖出一部分或买保护，不要用继续补仓来替代风控。",
+                f"如果持有杠杆工具：{tool_note}；如果已经持有 {tool or '杠杆仓'}，先降低杠杆仓位，再决定正股核心仓要不要继续留。",
+                "如果不想卖出正股：可以用 protective put 或 collar 给下跌风险上保险。",
             ],
         },
     ]
     recommended = [
         f"{resistance} 附近分批锁定部分利润。",
-        f"跌破 {support} 执行保护，不继续加杠杆。",
+        f"如果跌破 {support}，先卖出一部分或买保护，不要继续加杠杆。",
     ]
     avoid = ["不把保护问题简化成一次性卖光或继续硬扛。"]
     return headline, sections, recommended, avoid
@@ -402,11 +402,11 @@ def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[s
     tool_note = tool_note.rstrip("。")
     bucket = _ret_bucket(structure)
     if bucket == "weak":
-        headline = f"{symbol} 处在弱势回撤，先控制亏损暴露。守不住{support}就降仓，杠杆工具不参与。"
+        headline = f"{symbol} 处在弱势回撤阶段，第一目标是控制亏损继续扩大。如果守不住{support}，先卖出一部分；这个阶段不要用杠杆工具。"
     elif bucket == "extended":
-        headline = f"{symbol} 波动较大，回撤控制要看{support}。能守住才讨论正股修复，杠杆仓先降。"
+        headline = f"{symbol} 波动比较大，回撤控制要先看{support}能不能守住。只有守住后才讨论正股修复；如果有杠杆仓，先降下来。"
     else:
-        headline = f"{symbol} 还在支撑观察区，补仓不是默认动作。先确认{support}，再决定是否恢复小仓位正股。"
+        headline = f"{symbol} 还在支撑观察区，补仓不是默认动作。先确认价格能不能守住{support}，再决定是否用小仓位正股加回。"
     sections = [
         {
             "title": f"{symbol} 结构与点位",
@@ -419,17 +419,17 @@ def _loss_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[s
         {
             "title": "回撤控制算法",
             "bullets": [
-                f"正股守住：{support}上方只保留观察仓，不急着摊低成本。",
-                f"正股跌破：降仓到能承受的位置，下一观察区看 {major}。",
-                f"正股收复：重新站回{support}并形成更高低点后，才恢复小仓位加回。",
-                f"杠杆工具：{tool_note}；回撤阶段不新开杠杆，已有杠杆仓优先退出。",
-                "保护工具：仍想持有时，用 protective put 或 put spread 限制下行。",
+                f"如果价格守住：在{support}上方先保留观察仓，不急着补仓摊低成本。",
+                f"如果价格跌破：先卖出一部分，把亏损控制在能承受的范围内；下一步再看{major}附近有没有重新企稳。",
+                f"如果价格重新转强：只有重新站回{support}并形成更高的低点后，才考虑用小仓位正股加回。",
+                f"如果涉及杠杆工具：{tool_note}；回撤阶段不要新开杠杆仓，已经有的杠杆仓也应该优先退出。",
+                "如果仍想继续持有：可以用 protective put 或 put spread 来限制继续下跌的损失。",
             ],
         },
     ]
     recommended = [
         f"守住 {support} 再讨论正股小仓加回。",
-        f"跌破 {support} 先降风险，杠杆工具不参与。",
+        f"如果跌破 {support}，先卖出一部分把亏损控制住，暂时不要使用杠杆工具。",
     ]
     avoid = ["不把卖 put 或加杠杆当作止损替代。"]
     return headline, sections, recommended, avoid
