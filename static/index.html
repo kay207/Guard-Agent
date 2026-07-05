@@ -50,11 +50,6 @@
               <div class="score-ring" id="scoreRing"><span id="riskScore">--</span></div>
               <div>
                 <p id="headline" class="headline">正在计算组合风险...</p>
-                <div class="trend-grid">
-                  <div><span>日</span><strong id="trendDay">--</strong></div>
-                  <div><span>周</span><strong id="trendWeek">--</strong></div>
-                  <div><span>月</span><strong id="trendMonth">--</strong></div>
-                </div>
               </div>
             </div>
           </section>
@@ -89,27 +84,27 @@
       </section>
 
       <section class="supporting-context">
-        <section class="panel context-panel">
-          <div class="panel-head">
-            <span>核心仓位</span>
-            <strong id="totalValue">--</strong>
-          </div>
-          <div id="positions" class="position-list"></div>
-        </section>
-
-        <section class="panel context-panel">
-          <div class="panel-head">
-            <span>风险变化与保护建议</span>
-          </div>
-          <div id="alerts" class="alert-list"></div>
-        </section>
-
         <section class="panel context-panel risk-structure-panel">
           <div class="panel-head">
             <span>风险结构</span>
           </div>
           <div id="modules" class="module-list"></div>
         </section>
+
+        <section class="panel context-panel alerts-panel">
+          <div class="panel-head">
+            <span>风险变化与保护建议</span>
+          </div>
+          <div id="alerts" class="alert-list"></div>
+        </section>
+
+        <details class="panel context-panel holdings-panel">
+          <summary class="panel-head holdings-summary">
+            <span>核心仓位</span>
+            <strong id="totalValue">--</strong>
+          </summary>
+          <div id="positions" class="position-list"></div>
+        </details>
       </section>
     </main>
 

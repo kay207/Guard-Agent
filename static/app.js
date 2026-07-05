@@ -125,9 +125,6 @@ function renderScan(scan) {
   $("riskLevel").textContent = scan.risk_level;
   $("headline").textContent = scan.headline;
   $("totalValue").textContent = fmtMoney(scan.total_value);
-  $("trendDay").textContent = scan.risk_trend.day;
-  $("trendWeek").textContent = `${scan.risk_trend.week} (${scan.risk_trend.week_delta >= 0 ? "+" : ""}${scan.risk_trend.week_delta})`;
-  $("trendMonth").textContent = `${scan.risk_trend.month} (${scan.risk_trend.month_delta >= 0 ? "+" : ""}${scan.risk_trend.month_delta})`;
   setScore(scan.risk_score);
   renderPositions(scan.top_positions);
   renderAlerts(scan);

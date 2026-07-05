@@ -149,7 +149,7 @@ h1 {
 
 .supporting-context {
   display: grid;
-  grid-template-columns: 340px 420px minmax(420px, 1fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
   gap: 12px;
   align-items: start;
 }
@@ -220,34 +220,10 @@ h1 {
 }
 
 .headline {
-  margin: 0 0 14px;
+  margin: 0;
   line-height: 1.45;
   font-size: 15px;
   font-weight: 700;
-}
-
-.trend-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.trend-grid div {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 8px;
-  min-height: 58px;
-}
-
-.trend-grid span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 5px;
-}
-
-.trend-grid strong {
-  font-size: 13px;
 }
 
 .position-list,
@@ -437,7 +413,7 @@ input:focus {
 }
 
 .module-list {
-  max-height: 330px;
+  max-height: 430px;
   overflow: auto;
 }
 
@@ -580,7 +556,7 @@ input:focus {
 .context-panel .score-wrap {
   grid-template-columns: 78px 1fr;
   gap: 12px;
-  padding-top: 12px;
+  padding: 16px 14px;
 }
 
 .context-panel .score-ring {
@@ -594,8 +570,55 @@ input:focus {
   font-size: 22px;
 }
 
-.risk-structure-panel {
-  grid-column: span 1;
+.risk-structure-panel,
+.alerts-panel {
+  min-width: 0;
+  height: 520px;
+  overflow: hidden;
+}
+
+.risk-structure-panel .module-list,
+.alerts-panel .alert-list {
+  max-height: 476px;
+  overflow: auto;
+}
+
+.holdings-panel {
+  grid-column: 1 / -1;
+  overflow: hidden;
+}
+
+.holdings-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.holdings-summary strong {
+  margin-left: auto;
+}
+
+.holdings-summary::-webkit-details-marker {
+  display: none;
+}
+
+.holdings-summary::after {
+  content: "展开";
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 760;
+  margin-left: 10px;
+}
+
+.holdings-panel[open] .holdings-summary::after {
+  content: "收起";
+}
+
+.holdings-panel .position-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 18px;
+  max-height: 260px;
+  overflow: auto;
 }
 
 @media (max-width: 1180px) {
@@ -608,6 +631,6 @@ input:focus {
   }
 
   .supporting-context {
-    grid-template-columns: 300px 360px minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
   }
 }
