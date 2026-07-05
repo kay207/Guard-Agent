@@ -320,6 +320,7 @@ def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[st
     next_resistance = _level(structure.get("next_resistance"), "下一压力区")
     tool, tool_note = _leveraged_tool_for(symbol)
     tool_note = tool_note.rstrip("。")
+    deeper_support_text = f"如果继续跌向{major}" if major != support else "如果反复站不回这个区域"
     bucket = _ret_bucket(structure)
     if bucket == "extended":
         headline = f"{symbol} 短线已经有点偏热，不适合一次性买满。更稳妥的做法是等价格回到{support}附近站稳后分批买；只有突破{resistance}并站住，才考虑很小仓位的杠杆工具。"
@@ -342,7 +343,7 @@ def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[st
                 f"如果价格先回落：等它回到{support}附近并重新走稳，再买入计划仓位的 30%-40%；如果后面还能守住这个区域，再加第二笔。",
                 f"如果价格直接向上突破：只有放量站稳{resistance}后，才跟随买入 20%-30% 的计划仓位，第一目标先看{next_resistance}。",
                 f"如果想用杠杆工具：{tool_note}；只有在突破确认、且大盘风险偏好不弱时才短线使用。一旦价格跌回{resistance}下方，就先退出杠杆仓位。",
-                f"如果计划失败：跌破{support}后，先不要再买入这个标的，也不要用杠杆加仓；如果继续跌向{major}，等价格重新站稳后再评估。",
+                f"如果计划失败：跌破{support}后，先不要再买入这个标的，也不要用杠杆加仓；{deeper_support_text}，等价格重新站稳后再评估。",
             ],
         },
     ]
@@ -350,7 +351,7 @@ def _buy_plan(symbol: str, structure: dict[str, Any]) -> tuple[str, list[dict[st
         f"正股主计划：{support} 企稳后分批买入。",
         f"杠杆备选：{tool or '不使用杠杆工具'}，只在突破确认后短线使用。",
     ]
-    avoid = [f"跌破 {support} 后暂停新增风险。"]
+    avoid = [f"如果跌破 {support}，先暂停买入这个标的，也不要用杠杆加仓。"]
     return headline, sections, recommended, avoid
 
 
